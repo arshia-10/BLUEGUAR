@@ -4,6 +4,8 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { ChatbotButton } from "@/components/ChatbotButton";
+import { useEffect, useState } from "react";
+import { reportsAPI } from "@/lib/api";
 
 const Admin = () => {
   const tasks = [
@@ -13,11 +15,45 @@ const Admin = () => {
     { id: 4, title: "Set up emergency shelter", assignee: "Team Delta", progress: 0, status: "pending" }
   ];
 
-  const incidents = [
-    { id: 1, type: "Road Flooding", location: "Main St & 5th Ave", severity: "high", reports: 12, time: "5m ago" },
-    { id: 2, type: "Water Accumulation", location: "Park District", severity: "medium", reports: 7, time: "15m ago" },
-    { id: 3, type: "Drainage Issue", location: "Industrial Zone", severity: "low", reports: 3, time: "1h ago" }
-  ];
+  // Citizen reports fetched from backend
+  const [reports, setReports] = useState<any[]>([]);
+  const [isLoadingReports, setIsLoadingReports] = useState<boolean>(false);
+  const [reportsError, setReportsError] = useState<string | null>(null);
+
+  const [reportCount, setReportCount] = useState<number | null>(null);
+  const [isLoadingCount, setIsLoadingCount] = useState<boolean>(false);
+  const [countError, setCountError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchReports = async () => {
+      try {
+        setIsLoadingReports(true);
+        setReportsError(null);
+        // Use public all-reports endpoint for admin dashboard
+        const res = await reportsAPI.getAllReports();
+        setReports(res.reports || []);
+      } catch (e: any) {
+        setReportsError(e.message || "Failed to load reports");
+      } finally {
+        setIsLoadingReports(false);
+      }
+    };
+
+    const fetchCount = async () => {
+      try {
+        setIsLoadingCount(true);
+        setCountError(null);
+        const res = await reportsAPI.getReportCount();
+        setReportCount(res.count);
+      } catch (e: any) {
+        setCountError(e.message || "Failed to load count");
+      } finally {
+        setIsLoadingCount(false);
+      }
+    };
+    fetchReports();
+    fetchCount();
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
@@ -31,8 +67,13 @@ const Admin = () => {
               </div>
               <Badge variant="destructive">+5</Badge>
             </div>
-            <div className="text-3xl font-bold mb-1">24</div>
+            <div className="text-3xl font-bold mb-1">
+              {isLoadingCount ? "…" : (reportCount ?? 0)}
+            </div>
             <div className="text-sm text-muted-foreground">Active Incidents</div>
+            {countError && (
+              <div className="text-xs text-destructive mt-2">{countError}</div>
+            )}
           </Card>
 
           <Card className="p-6">
@@ -111,39 +152,51 @@ const Admin = () => {
                   Filter
                 </Button>
               </div>
-              <div className="space-y-3">
-                {incidents.map((incident) => (
-                  <div key={incident.id} className="p-4 bg-secondary rounded-lg hover:shadow-md transition-shadow">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Badge
-                            variant={
-                              incident.severity === "high"
-                                ? "destructive"
-                                : incident.severity === "medium"
-                                ? "secondary"
-                                : "outline"
-                            }
-                          >
-                            {incident.severity}
-                          </Badge>
-                          <span className="font-semibold">{incident.type}</span>
-                        </div>
-                        <div className="text-sm text-muted-foreground mb-2">
-                          <MapPin className="h-3 w-3 inline mr-1" />
-                          {incident.location}
-                        </div>
-                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                          <span>{incident.reports} reports</span>
-                          <span>{incident.time}</span>
+              {isLoadingReports ? (
+                <div className="text-sm text-muted-foreground">Loading reports…</div>
+              ) : reportsError ? (
+                <div className="text-sm text-destructive">{reportsError}</div>
+              ) : (
+                <div className="space-y-3">
+                  {reports.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">No incidents reported yet.</div>
+                  ) : (
+                    reports.map((r) => (
+                      <div key={r.id} className="p-4 bg-secondary rounded-lg hover:shadow-md transition-shadow">
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <Badge
+                                variant={
+                                  r.status === "resolved"
+                                    ? "default"
+                                    : r.status === "reviewed"
+                                    ? "secondary"
+                                    : "destructive"
+                                }
+                              >
+                                {r.status}
+                              </Badge>
+                              <span className="font-semibold">{r.location}</span>
+                            </div>
+                            <div className="text-sm text-muted-foreground mb-2">
+                              <MapPin className="h-3 w-3 inline mr-1" />
+                              {r.reporter_name} • {new Date(r.created_at).toLocaleString()}
+                            </div>
+                            <div className="text-sm">{r.description}</div>
+                            {r.image && (
+                              <div className="mt-2">
+                                <img src={r.image} alt="Incident" className="h-24 rounded border object-cover" />
+                              </div>
+                            )}
+                          </div>
+                          <Button size="sm" variant="outline">Assign Team</Button>
                         </div>
                       </div>
-                      <Button size="sm" variant="outline">Assign Team</Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                    ))
+                  )}
+                </div>
+              )}
             </Card>
           </div>
 

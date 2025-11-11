@@ -101,6 +101,24 @@ def admin_signup(request):
             'error': str(e) if settings.DEBUG else None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_report_count(request):
+    """
+    Return total number of citizen reports (all entries in CitizenReport table).
+    """
+    try:
+        total = CitizenReport.objects.count()
+        return Response({'count': total}, status=status.HTTP_200_OK)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Get report count error: {str(e)}")
+        return Response({
+            'detail': 'An error occurred while fetching report count.',
+            'error': str(e) if settings.DEBUG else None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -462,15 +480,13 @@ def get_reports(request):
     """
     try:
         user = request.user
-        
-        # Get user email to filter reports
+        # Admins can view all citizen reports
         if isinstance(user, Admin):
-            user_email = user.email
+            reports = CitizenReport.objects.all().order_by('-created_at')
         else:
+            # Regular users only see their own reports
             user_email = user.email
-        
-        # Get reports for this user
-        reports = CitizenReport.objects.filter(reporter_email=user_email).order_by('-created_at')
+            reports = CitizenReport.objects.filter(reporter_email=user_email).order_by('-created_at')
         serializer = CitizenReportSerializer(reports, many=True)
         
         return Response({
@@ -485,6 +501,26 @@ def get_reports(request):
             'error': str(e) if settings.DEBUG else None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def get_all_reports(request):
+    """
+    Return all citizen reports regardless of requester auth.
+    Intended for admin dashboard listing.
+    """
+    try:
+        reports = CitizenReport.objects.all().order_by('-created_at')
+        serializer = CitizenReportSerializer(reports, many=True)
+        return Response({'reports': serializer.data}, status=status.HTTP_200_OK)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Get all reports error: {str(e)}")
+        return Response({
+            'detail': 'An error occurred while fetching all reports.',
+            'error': str(e) if settings.DEBUG else None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['POST'])
 @permission_classes([AllowAny])

@@ -13,5 +13,7 @@ urlpatterns = [
     path('auth/otp/verify/', views.verify_otp, name='verify-otp'),
     path('reports/create/', views.create_report, name='create-report'),
     path('reports/', views.get_reports, name='get-reports'),
+    path('reports/count/', views.get_report_count, name='get-report-count'),
+    path('reports/all/', views.get_all_reports, name='get-all-reports'),
 ]
 

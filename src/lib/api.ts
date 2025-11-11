@@ -428,6 +428,32 @@ export const reportsAPI = {
 
     return response.json();
   },
+
+  // Get total reports count (all entries)
+  getReportCount: async (): Promise<{ count: number }> => {
+    const response = await apiRequest('/reports/count/', {
+      method: 'GET',
+    });
+    if (!response.ok) {
+      if (response.status === 401) {
+        removeAuthToken();
+        throw new Error('Authentication failed. Please login again.');
+      }
+      throw new Error('Failed to fetch report count');
+    }
+    return response.json();
+  },
+
+  // Get all reports (admin dashboard use)
+  getAllReports: async () => {
+    const response = await apiRequest('/reports/all/', {
+      method: 'GET',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch reports');
+    }
+    return response.json();
+  },
 };
 
 // OTP API functions

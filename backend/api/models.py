@@ -138,6 +138,21 @@ class CitizenReport(models.Model):
         return f"Report from {self.reporter_name} at {self.location}"
 
 
+class ReportUpvote(models.Model):
+    """Track which users upvoted which reports"""
+    report = models.ForeignKey(CitizenReport, on_delete=models.CASCADE, related_name='upvotes')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='report_upvotes')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('report', 'user')
+        indexes = [
+            models.Index(fields=['report', 'user']),
+        ]
+
+    def __str__(self):
+        return f"Upvote by {self.user.username} on report {self.report_id}"
+
 class OTP(models.Model):
     """OTP model for email/phone verification"""
     email = models.EmailField()
