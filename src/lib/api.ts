@@ -505,5 +505,13 @@ export const otpAPI = {
   },
 };
 
+// Resolve backend media URL (for ImageField/FileField)
+export const resolveMediaUrl = (url?: string | null) => {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  const origin = import.meta.env.DEV ? 'http://localhost:8000' : 'http://localhost:8000';
+  // url expected like '/media/...'
+  return `${origin}${url.startsWith('/') ? '' : '/'}${url}`;
+};
 
 

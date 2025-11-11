@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { ChatbotButton } from "@/components/ChatbotButton";
-import { reportsAPI } from "@/lib/api";
+import { reportsAPI, resolveMediaUrl } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
 const Citizen = () => {
@@ -49,7 +49,10 @@ const Citizen = () => {
       try {
         setIsLoadingReports(true);
         const response = await reportsAPI.getReports();
-        setReports(response.reports || []);
+        const items = response.reports || [];
+        // Arrange in increasing order by created_at (oldest first)
+        items.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        setReports(items);
       } catch (error: any) {
         console.error("Error fetching reports:", error);
         toast({
@@ -228,7 +231,9 @@ const Citizen = () => {
 
       // Refresh reports list
       const reportsResponse = await reportsAPI.getReports();
-      setReports(reportsResponse.reports || []);
+      const items = reportsResponse.reports || [];
+      items.sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      setReports(items);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -486,13 +491,14 @@ const Citizen = () => {
                 </div>
               ) : (
               <div className="space-y-3">
-                  {reports.map((report) => (
-                  <div key={report.id} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className="w-2 h-2 rounded-full bg-accent flex-shrink-0" />
+                {reports.map((report) => (
+                  <div key={report.id} className="p-3 bg-secondary rounded-lg">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3 flex-1 min-w-0">
+                        <div className="w-2 h-2 rounded-full bg-accent flex-shrink-0 mt-2" />
                         <div className="min-w-0 flex-1">
-                          <div className="font-medium truncate">{report.location}</div>
-                          <div className="text-sm text-muted-foreground truncate">{report.description}</div>
+                          <div className="font-medium">{report.location}</div>
+                          <div className="text-sm text-muted-foreground">{report.description}</div>
                           <div className="text-xs text-muted-foreground mt-1">
                             {formatTimeAgo(report.created_at)}
                           </div>
@@ -506,10 +512,31 @@ const Citizen = () => {
                             ? "secondary"
                             : "outline"
                         }
-                        className="ml-2 flex-shrink-0"
+                        className="flex-shrink-0"
                       >
-                      {report.status}
-                    </Badge>
+                        {report.status}
+                      </Badge>
+                    </div>
+                    {report.image && (
+                      <div className="mt-3">
+                        <img
+                          src={resolveMediaUrl(report.image)}
+                          alt="Report"
+                          className="h-28 w-auto rounded-md border object-cover"
+                        />
+                      </div>
+                    )}
+                    {report.audio && (
+                      <div className="mt-3">
+                        <audio
+                          controls
+                          src={resolveMediaUrl(report.audio)}
+                          className="w-full"
+                        >
+                          Your browser does not support the audio element.
+                        </audio>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

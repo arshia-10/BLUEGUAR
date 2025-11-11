@@ -3,9 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { ChatbotButton } from "@/components/ChatbotButton";
+
 import { useEffect, useState } from "react";
-import { reportsAPI } from "@/lib/api";
+import { reportsAPI, resolveMediaUrl } from "@/lib/api";
 
 const Admin = () => {
   const tasks = [
@@ -187,8 +187,23 @@ const Admin = () => {
                             </div>
                             <div className="text-sm">{r.description}</div>
                             {r.image && (
-                              <div className="mt-2">
-                                <img src={r.image} alt="Incident" className="h-24 rounded border object-cover" />
+                              <div className="mt-3">
+                                <img
+                                  src={resolveMediaUrl(r.image)}
+                                  alt="Incident"
+                                  className="h-28 w-auto rounded-md border object-cover"
+                                />
+                              </div>
+                            )}
+                            {r.audio && (
+                              <div className="mt-3">
+                                <audio
+                                  controls
+                                  src={resolveMediaUrl(r.audio)}
+                                  className="w-full"
+                                >
+                                  Your browser does not support the audio element.
+                                </audio>
                               </div>
                             )}
                           </div>
@@ -304,7 +319,7 @@ const Admin = () => {
         </div>
       </div>
 
-      <ChatbotButton />
+
     </div>
   );
 };
