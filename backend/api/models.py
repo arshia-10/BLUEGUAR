@@ -17,6 +17,7 @@ class Admin(models.Model):
     last_name = models.CharField(max_length=30, blank=True)
     phone_number = models.CharField(max_length=20, blank=True, null=True)
     address = models.TextField(blank=True, null=True)
+    aadhaar_card = models.ImageField(upload_to='aadhaar/admin/', null=True, blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -78,6 +79,7 @@ class UserProfile(models.Model):
     user_type = models.CharField(max_length=20, choices=USER_TYPE_CHOICES, default='citizen')
     phone_number = models.CharField(max_length=20, blank=True, null=True)
     address = models.TextField(blank=True, null=True)
+    aadhaar_card = models.ImageField(upload_to='aadhaar/citizen/', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -134,4 +136,26 @@ class CitizenReport(models.Model):
 
     def __str__(self):
         return f"Report from {self.reporter_name} at {self.location}"
+
+
+class OTP(models.Model):
+    """OTP model for email/phone verification"""
+    email = models.EmailField()
+    otp_code = models.CharField(max_length=6)
+    phone_number = models.CharField(max_length=20, blank=True, null=True)
+    is_verified = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['email', 'otp_code']),
+        ]
+    
+    def __str__(self):
+        return f"OTP for {self.email} - {self.otp_code}"
+    
+    def is_expired(self):
+        return timezone.now() > self.expires_at
 

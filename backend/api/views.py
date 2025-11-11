@@ -4,7 +4,7 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.authtoken.models import Token
 from django.conf import settings
-from .models import Admin, AdminToken, CitizenReport
+from .models import Admin, AdminToken, CitizenReport, OTP
 from .serializers import (
     AdminSignupSerializer, 
     CitizenSignupSerializer, 
@@ -13,6 +13,10 @@ from .serializers import (
     ChangePasswordSerializer,
     CitizenReportSerializer,
 )
+from django.utils import timezone
+from datetime import timedelta
+import random
+import string
 
 
 @api_view(['GET'])
@@ -39,9 +43,21 @@ def api_root(request):
 def admin_signup(request):
     """
     Admin user signup endpoint - creates admin in separate Admin table
+    Handles file uploads (aadhaar card)
     """
     try:
-        serializer = AdminSignupSerializer(data=request.data)
+        # Prepare data - handle both JSON and FormData
+        from django.http import QueryDict
+        if isinstance(request.data, QueryDict):
+            signup_data = request.data.dict()
+        else:
+            signup_data = dict(request.data) if hasattr(request, 'data') else {}
+        
+        # Handle file uploads - aadhaar card
+        if 'aadhaar_card' in request.FILES:
+            signup_data['aadhaar_card'] = request.FILES['aadhaar_card']
+        
+        serializer = AdminSignupSerializer(data=signup_data)
         if serializer.is_valid():
             admin = serializer.save()
             # Delete any existing token for this admin and create a new one
@@ -49,7 +65,6 @@ def admin_signup(request):
             token = AdminToken.objects.create(admin=admin)
             
             # Update last_login
-            from django.utils import timezone
             admin.last_login = timezone.now()
             admin.save()
             
@@ -77,8 +92,10 @@ def admin_signup(request):
     except Exception as e:
         # Log the error for debugging
         import logging
+        import traceback
         logger = logging.getLogger(__name__)
         logger.error(f"Admin signup error: {str(e)}")
+        logger.error(traceback.format_exc())
         return Response({
             'detail': 'An error occurred during registration. Please try again.',
             'error': str(e) if settings.DEBUG else None
@@ -90,9 +107,21 @@ def admin_signup(request):
 def citizen_signup(request):
     """
     Citizen user signup endpoint
+    Handles file uploads (aadhaar card)
     """
     try:
-        serializer = CitizenSignupSerializer(data=request.data)
+        # Prepare data - handle both JSON and FormData
+        from django.http import QueryDict
+        if isinstance(request.data, QueryDict):
+            signup_data = request.data.dict()
+        else:
+            signup_data = dict(request.data) if hasattr(request, 'data') else {}
+        
+        # Handle file uploads - aadhaar card
+        if 'aadhaar_card' in request.FILES:
+            signup_data['aadhaar_card'] = request.FILES['aadhaar_card']
+        
+        serializer = CitizenSignupSerializer(data=signup_data)
         if serializer.is_valid():
             user = serializer.save()
             # Delete any existing token for this user and create a new one
@@ -119,8 +148,10 @@ def citizen_signup(request):
     except Exception as e:
         # Log the error for debugging
         import logging
+        import traceback
         logger = logging.getLogger(__name__)
         logger.error(f"Citizen signup error: {str(e)}")
+        logger.error(traceback.format_exc())
         return Response({
             'detail': 'An error occurred during registration. Please try again.',
             'error': str(e) if settings.DEBUG else None
@@ -451,6 +482,112 @@ def get_reports(request):
         logger.error(f"Get reports error: {str(e)}")
         return Response({
             'detail': 'An error occurred while fetching reports.',
+            'error': str(e) if settings.DEBUG else None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def generate_otp(request):
+    """
+    Generate OTP for email verification
+    """
+    try:
+        email = request.data.get('email')
+        if not email:
+            return Response({
+                'detail': 'Email is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Generate 6-digit OTP
+        otp_code = ''.join(random.choices(string.digits, k=6))
+        
+        # Delete old OTPs for this email
+        OTP.objects.filter(email=email, is_verified=False).delete()
+        
+        # Create new OTP (expires in 10 minutes)
+        otp = OTP.objects.create(
+            email=email,
+            otp_code=otp_code,
+            expires_at=timezone.now() + timedelta(minutes=10)
+        )
+        
+        # In production, send OTP via email/SMS
+        # For development, we'll return it in response
+        if settings.DEBUG:
+            return Response({
+                'message': 'OTP generated successfully',
+                'otp': otp_code,  # Only in DEBUG mode
+                'expires_in': 600  # 10 minutes in seconds
+            }, status=status.HTTP_200_OK)
+        else:
+            # In production, send OTP via email
+            # TODO: Implement email sending
+            return Response({
+                'message': 'OTP sent to your email',
+                'expires_in': 600
+            }, status=status.HTTP_200_OK)
+            
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"OTP generation error: {str(e)}")
+        return Response({
+            'detail': 'An error occurred while generating OTP.',
+            'error': str(e) if settings.DEBUG else None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def verify_otp(request):
+    """
+    Verify OTP code
+    """
+    try:
+        email = request.data.get('email')
+        otp_code = request.data.get('otp')
+        
+        if not email or not otp_code:
+            return Response({
+                'detail': 'Email and OTP code are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get the most recent OTP for this email
+        try:
+            otp = OTP.objects.filter(email=email, is_verified=False).latest('created_at')
+        except OTP.DoesNotExist:
+            return Response({
+                'detail': 'Invalid or expired OTP'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if OTP is expired
+        if otp.is_expired():
+            return Response({
+                'detail': 'OTP has expired. Please generate a new one.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Verify OTP code
+        if otp.otp_code != otp_code:
+            return Response({
+                'detail': 'Invalid OTP code'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Mark OTP as verified
+        otp.is_verified = True
+        otp.save()
+        
+        return Response({
+            'message': 'OTP verified successfully',
+            'verified': True
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"OTP verification error: {str(e)}")
+        return Response({
+            'detail': 'An error occurred while verifying OTP.',
             'error': str(e) if settings.DEBUG else None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { Shield, Mail, Lock, User as UserIcon, Loader2 } from "lucide-react";
+import { Shield, Mail, Lock, User as UserIcon, Loader2, Image as ImageIcon, X, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { ChatbotButton } from "@/components/ChatbotButton";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { otpAPI } from "@/lib/api";
 
 const Auth = () => {
   const [searchParams] = useSearchParams();
@@ -18,6 +19,19 @@ const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { login, signupAdmin, signupCitizen } = useAuth();
+
+  // Aadhaar card state
+  const [aadhaarCard, setAadhaarCard] = useState<File | null>(null);
+  const [aadhaarPreview, setAadhaarPreview] = useState<string | null>(null);
+  const aadhaarInputRef = useRef<HTMLInputElement>(null);
+
+  // OTP state
+  const [otpCode, setOtpCode] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpVerified, setOtpVerified] = useState(false);
+  const [isGeneratingOTP, setIsGeneratingOTP] = useState(false);
+  const [isVerifyingOTP, setIsVerifyingOTP] = useState(false);
+  const [otpError, setOtpError] = useState<string | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -35,6 +49,112 @@ const Auth = () => {
       [e.target.id]: e.target.value,
     });
     setError(null);
+    // Reset OTP state when email changes
+    if (e.target.id === 'email') {
+      setOtpSent(false);
+      setOtpVerified(false);
+      setOtpCode("");
+    }
+  };
+
+  // Handle Aadhaar card upload
+  const handleAadhaarSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        toast({
+          title: "File too large",
+          description: "Please select an image smaller than 5MB",
+          variant: "destructive",
+        });
+        return;
+      }
+      setAadhaarCard(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAadhaarPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Remove Aadhaar card
+  const removeAadhaar = () => {
+    setAadhaarCard(null);
+    setAadhaarPreview(null);
+    if (aadhaarInputRef.current) {
+      aadhaarInputRef.current.value = '';
+    }
+  };
+
+  // Generate OTP
+  const handleGenerateOTP = async () => {
+    if (!formData.email) {
+      toast({
+        title: "Email required",
+        description: "Please enter your email address first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsGeneratingOTP(true);
+      setOtpError(null);
+      const response = await otpAPI.generateOTP(formData.email);
+      
+      setOtpSent(true);
+      // In development, OTP is returned in response
+      const otpMessage = response.otp 
+        ? `OTP sent! Your OTP is: ${response.otp} (Development Mode)`
+        : "OTP sent to your email. Please check your inbox.";
+      toast({
+        title: "OTP Sent",
+        description: otpMessage,
+      });
+    } catch (error: any) {
+      setOtpError(error.message || "Failed to generate OTP");
+      toast({
+        title: "Error",
+        description: error.message || "Failed to generate OTP",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingOTP(false);
+    }
+  };
+
+  // Verify OTP
+  const handleVerifyOTP = async () => {
+    if (!otpCode || otpCode.length !== 6) {
+      toast({
+        title: "Invalid OTP",
+        description: "Please enter a 6-digit OTP code",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsVerifyingOTP(true);
+      setOtpError(null);
+      await otpAPI.verifyOTP(formData.email, otpCode);
+      
+      setOtpVerified(true);
+      toast({
+        title: "OTP Verified",
+        description: "Email verified successfully!",
+      });
+    } catch (error: any) {
+      setOtpError(error.message || "Failed to verify OTP");
+      toast({
+        title: "Verification Failed",
+        description: error.message || "Invalid OTP code",
+        variant: "destructive",
+      });
+    } finally {
+      setIsVerifyingOTP(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -93,13 +213,23 @@ const Auth = () => {
           return;
         }
 
-        const signupData = {
+        const signupData: any = {
           username: formData.username,
           email: formData.email,
           password: formData.password,
           first_name: formData.first_name || "",
           last_name: formData.last_name || "",
         };
+
+        // Add Aadhaar card if uploaded
+        if (aadhaarCard) {
+          signupData.aadhaar_card = aadhaarCard;
+        }
+
+        // Add OTP verification status
+        if (otpVerified) {
+          signupData.otp_verified = true;
+        }
 
         if (userType === "admin") {
           await signupAdmin(signupData);
@@ -232,6 +362,122 @@ const Auth = () => {
                     />
                   </div>
                 </div>
+
+                {/* OTP Verification Section */}
+                <div className="space-y-2 border-t pt-4">
+                  <Label>Email Verification (OTP) - Optional</Label>
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      {!otpSent && !otpVerified && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleGenerateOTP}
+                          disabled={isGeneratingOTP || !formData.email}
+                          className="w-full"
+                        >
+                          {isGeneratingOTP ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Sending OTP...
+                            </>
+                          ) : (
+                            "Send OTP to Email"
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                    
+                    {otpSent && !otpVerified && (
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <Input
+                            type="text"
+                            placeholder="Enter 6-digit OTP"
+                            value={otpCode}
+                            onChange={(e) => {
+                              setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6));
+                              setOtpError(null);
+                            }}
+                            maxLength={6}
+                            className="flex-1"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleVerifyOTP}
+                            disabled={isVerifyingOTP || otpCode.length !== 6}
+                          >
+                            {isVerifyingOTP ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              "Verify"
+                            )}
+                          </Button>
+                        </div>
+                        {otpError && (
+                          <p className="text-sm text-destructive">{otpError}</p>
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          Check your email for the OTP code
+                        </p>
+                      </div>
+                    )}
+                    
+                    {otpVerified && (
+                      <div className="flex items-center gap-2 text-sm text-green-600">
+                        <CheckCircle className="h-4 w-4" />
+                        <span>Email verified successfully</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Aadhaar Card Upload */}
+                <div className="space-y-2 border-t pt-4">
+                  <Label htmlFor="aadhaar_card">Aadhaar Card Photo (Optional)</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      ref={aadhaarInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleAadhaarSelect}
+                      className="hidden"
+                      id="aadhaar_card"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => aadhaarInputRef.current?.click()}
+                      className="flex-1"
+                    >
+                      <ImageIcon className="mr-2 h-4 w-4" />
+                      {aadhaarCard ? "Change Aadhaar Card" : "Upload Aadhaar Card"}
+                    </Button>
+                    {aadhaarCard && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={removeAadhaar}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                  {aadhaarPreview && (
+                    <div className="mt-2">
+                      <img
+                        src={aadhaarPreview}
+                        alt="Aadhaar preview"
+                        className="w-full h-32 object-cover rounded-md border"
+                      />
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Upload a clear photo of your Aadhaar card (Max 5MB)
+                  </p>
+                </div>
               </>
             )}
 
@@ -292,7 +538,25 @@ const Auth = () => {
           <div className="mt-6 text-center">
             <button
               type="button"
-              onClick={() => setIsLogin(!isLogin)}
+              onClick={() => {
+                setIsLogin(!isLogin);
+                // Reset form state when switching
+                setFormData({
+                  username: "",
+                  email: "",
+                  password: "",
+                  confirmPassword: "",
+                  first_name: "",
+                  last_name: "",
+                });
+                setAadhaarCard(null);
+                setAadhaarPreview(null);
+                setOtpCode("");
+                setOtpSent(false);
+                setOtpVerified(false);
+                setOtpError(null);
+                setError(null);
+              }}
               className="text-sm text-primary hover:underline"
             >
               {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}

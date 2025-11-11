@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
-from .models import Admin, AdminToken, UserProfile, FloodAlert, CitizenReport
+from .models import Admin, AdminToken, UserProfile, FloodAlert, CitizenReport, OTP
 
 
 class UserProfileInline(admin.StackedInline):
@@ -32,7 +32,7 @@ class AdminAdmin(admin.ModelAdmin):
     readonly_fields = ['created_at', 'updated_at', 'last_login']
     fieldsets = (
         (None, {'fields': ('username', 'email', 'password')}),
-        ('Personal info', {'fields': ('first_name', 'last_name', 'phone_number', 'address')}),
+        ('Personal info', {'fields': ('first_name', 'last_name', 'phone_number', 'address', 'aadhaar_card')}),
         ('Status', {'fields': ('is_active',)}),
         ('Important dates', {'fields': ('last_login', 'created_at', 'updated_at')}),
     )
@@ -61,6 +61,7 @@ class UserProfileAdmin(admin.ModelAdmin):
     list_filter = ['user_type', 'created_at']
     search_fields = ['user__username', 'user__email', 'phone_number']
     readonly_fields = ['created_at', 'updated_at']
+    fields = ['user', 'user_type', 'phone_number', 'address', 'aadhaar_card', 'created_at', 'updated_at']
 
 
 @admin.register(FloodAlert)
@@ -77,4 +78,16 @@ class CitizenReportAdmin(admin.ModelAdmin):
     list_filter = ['status', 'created_at']
     search_fields = ['reporter_name', 'location', 'description']
     readonly_fields = ['created_at', 'updated_at']
+
+
+@admin.register(OTP)
+class OTPAdmin(admin.ModelAdmin):
+    list_display = ['email', 'otp_code', 'is_verified', 'created_at', 'expires_at']
+    list_filter = ['is_verified', 'created_at']
+    search_fields = ['email', 'otp_code', 'phone_number']
+    readonly_fields = ['created_at', 'expires_at']
+    
+    def has_add_permission(self, request):
+        # OTPs are generated automatically, so don't allow manual creation
+        return False
 

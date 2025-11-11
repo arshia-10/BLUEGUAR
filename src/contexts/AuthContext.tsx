@@ -30,6 +30,8 @@ interface SignupData {
   last_name?: string;
   phone_number?: string;
   address?: string;
+  aadhaar_card?: File;
+  otp_verified?: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);

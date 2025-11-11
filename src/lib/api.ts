@@ -81,14 +81,25 @@ export const authAPI = {
     last_name?: string;
     phone_number?: string;
     address?: string;
+    aadhaar_card?: File;
+    otp_verified?: boolean;
   }) => {
     try {
       // Clear any existing invalid tokens before signup to ensure clean state
       removeAuthToken();
-      
       const response = await apiRequest('/auth/signup/admin/', {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          username: data.username,
+          email: data.email,
+          password: data.password,
+          first_name: data.first_name,
+          last_name: data.last_name,
+          phone_number: data.phone_number,
+          address: data.address,
+          // Explicitly omit aadhaar_card to avoid file upload path
+          otp_verified: data.otp_verified,
+        }),
       });
 
       if (!response.ok) {
@@ -155,14 +166,25 @@ export const authAPI = {
     last_name?: string;
     phone_number?: string;
     address?: string;
+    aadhaar_card?: File;
+    otp_verified?: boolean;
   }) => {
     try {
       // Clear any existing invalid tokens before signup to ensure clean state
       removeAuthToken();
-      
       const response = await apiRequest('/auth/signup/citizen/', {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          username: data.username,
+          email: data.email,
+          password: data.password,
+          first_name: data.first_name,
+          last_name: data.last_name,
+          phone_number: data.phone_number,
+          address: data.address,
+          // Explicitly omit aadhaar_card to avoid file upload path
+          otp_verified: data.otp_verified,
+        }),
       });
 
       if (!response.ok) {
@@ -402,6 +424,55 @@ export const reportsAPI = {
         throw new Error('Authentication failed. Please login again.');
       }
       throw new Error('Failed to fetch reports');
+    }
+
+    return response.json();
+  },
+};
+
+// OTP API functions
+export const otpAPI = {
+  // Generate OTP
+  generateOTP: async (email: string) => {
+    const response = await apiRequest('/auth/otp/generate/', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+
+    if (!response.ok) {
+      let errorMessage = 'Failed to generate OTP';
+      try {
+        const error = await response.json();
+        if (error.detail) {
+          errorMessage = error.detail;
+        }
+      } catch (e) {
+        errorMessage = `Server error: ${response.status} ${response.statusText}`;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  },
+
+  // Verify OTP
+  verifyOTP: async (email: string, otp: string) => {
+    const response = await apiRequest('/auth/otp/verify/', {
+      method: 'POST',
+      body: JSON.stringify({ email, otp }),
+    });
+
+    if (!response.ok) {
+      let errorMessage = 'Failed to verify OTP';
+      try {
+        const error = await response.json();
+        if (error.detail) {
+          errorMessage = error.detail;
+        }
+      } catch (e) {
+        errorMessage = `Server error: ${response.status} ${response.statusText}`;
+      }
+      throw new Error(errorMessage);
     }
 
     return response.json();

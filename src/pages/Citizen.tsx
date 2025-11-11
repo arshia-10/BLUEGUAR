@@ -282,13 +282,13 @@ const Citizen = () => {
               <div className="grid sm:grid-cols-2 gap-3">
                 <Dialog open={isReportDialogOpen} onOpenChange={setIsReportDialogOpen}>
                   <DialogTrigger asChild>
-                    <Button variant="outline" className="justify-start h-auto py-4">
-                      <Camera className="mr-3 h-5 w-5" />
-                      <div className="text-left">
-                        <div className="font-semibold">Report Incident</div>
-                        <div className="text-xs text-muted-foreground">Upload photo & location</div>
-                      </div>
-                    </Button>
+                <Button variant="outline" className="justify-start h-auto py-4">
+                  <Camera className="mr-3 h-5 w-5" />
+                  <div className="text-left">
+                    <div className="font-semibold">Report Incident</div>
+                    <div className="text-xs text-muted-foreground">Upload photo & location</div>
+                  </div>
+                </Button>
                   </DialogTrigger>
                   <DialogContent className="sm:max-w-[500px]">
                     <DialogHeader>
@@ -485,9 +485,9 @@ const Citizen = () => {
                   <p className="text-sm mt-1">Click "Report Incident" to submit your first report.</p>
                 </div>
               ) : (
-                <div className="space-y-3">
+              <div className="space-y-3">
                   {reports.map((report) => (
-                    <div key={report.id} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
+                  <div key={report.id} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
                       <div className="flex items-center gap-3 flex-1 min-w-0">
                         <div className="w-2 h-2 rounded-full bg-accent flex-shrink-0" />
                         <div className="min-w-0 flex-1">
@@ -508,11 +508,11 @@ const Citizen = () => {
                         }
                         className="ml-2 flex-shrink-0"
                       >
-                        {report.status}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
+                      {report.status}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
               )}
             </Card>
           </div>

@@ -38,6 +38,8 @@ class AdminSignupSerializer(serializers.Serializer):
     last_name = serializers.CharField(required=False, allow_blank=True)
     phone_number = serializers.CharField(required=False, allow_blank=True)
     address = serializers.CharField(required=False, allow_blank=True)
+    aadhaar_card = serializers.ImageField(required=False, allow_null=True)
+    otp_verified = serializers.BooleanField(required=False, default=False)
     
     def validate_username(self, value):
         if Admin.objects.filter(username=value).exists():
@@ -53,10 +55,30 @@ class AdminSignupSerializer(serializers.Serializer):
             raise serializers.ValidationError("Email already exists.")
         return value
     
+    def validate(self, data):
+        # Check if OTP is verified (optional for now, can be made required later)
+        email = data.get('email')
+        otp_verified = data.get('otp_verified', False)
+        
+        # For now, OTP verification is optional
+        # You can make it required by uncommenting below
+        # if not otp_verified:
+        #     from .models import OTP
+        #     try:
+        #         otp = OTP.objects.filter(email=email, is_verified=True).latest('created_at')
+        #         if otp.is_expired():
+        #             raise serializers.ValidationError("OTP verification expired. Please verify again.")
+        #     except OTP.DoesNotExist:
+        #         raise serializers.ValidationError("Please verify your email with OTP first.")
+        
+        return data
+    
     def create(self, validated_data):
         phone_number = validated_data.pop('phone_number', '')
         address = validated_data.pop('address', '')
         password = validated_data.pop('password')
+        aadhaar_card = validated_data.pop('aadhaar_card', None)
+        validated_data.pop('otp_verified', None)  # Remove from validated_data
         
         # Create admin without password first
         admin = Admin(
@@ -67,6 +89,10 @@ class AdminSignupSerializer(serializers.Serializer):
             phone_number=phone_number,
             address=address,
         )
+        
+        # Add aadhaar card if provided
+        if aadhaar_card:
+            admin.aadhaar_card = aadhaar_card
         
         # Set password using the model's set_password method (this hashes it)
         admin.set_password(password)
@@ -83,6 +109,8 @@ class CitizenSignupSerializer(serializers.Serializer):
     last_name = serializers.CharField(required=False, allow_blank=True)
     phone_number = serializers.CharField(required=False, allow_blank=True)
     address = serializers.CharField(required=False, allow_blank=True)
+    aadhaar_card = serializers.ImageField(required=False, allow_null=True)
+    otp_verified = serializers.BooleanField(required=False, default=False)
     
     def validate_username(self, value):
         # Check if username exists in User table (for citizens)
@@ -102,10 +130,30 @@ class CitizenSignupSerializer(serializers.Serializer):
             raise serializers.ValidationError("Email already exists.")
         return value
     
+    def validate(self, data):
+        # Check if OTP is verified (optional for now, can be made required later)
+        email = data.get('email')
+        otp_verified = data.get('otp_verified', False)
+        
+        # For now, OTP verification is optional
+        # You can make it required by uncommenting below
+        # if not otp_verified:
+        #     from .models import OTP
+        #     try:
+        #         otp = OTP.objects.filter(email=email, is_verified=True).latest('created_at')
+        #         if otp.is_expired():
+        #             raise serializers.ValidationError("OTP verification expired. Please verify again.")
+        #     except OTP.DoesNotExist:
+        #         raise serializers.ValidationError("Please verify your email with OTP first.")
+        
+        return data
+    
     def create(self, validated_data):
         phone_number = validated_data.pop('phone_number', '')
         address = validated_data.pop('address', '')
         password = validated_data.pop('password')
+        aadhaar_card = validated_data.pop('aadhaar_card', None)
+        validated_data.pop('otp_verified', None)  # Remove from validated_data
         
         user = User.objects.create_user(
             username=validated_data['username'],
@@ -115,12 +163,17 @@ class CitizenSignupSerializer(serializers.Serializer):
             last_name=validated_data.get('last_name', ''),
         )
         
-        UserProfile.objects.create(
+        profile = UserProfile.objects.create(
             user=user,
             user_type='citizen',
             phone_number=phone_number,
             address=address
         )
+        
+        # Add aadhaar card if provided
+        if aadhaar_card:
+            profile.aadhaar_card = aadhaar_card
+            profile.save()
         
         return user
 
@@ -138,10 +191,14 @@ class LoginSerializer(serializers.Serializer):
                 'non_field_errors': ['Must include username and password.']
             })
         
-        # First, try to authenticate as admin
-        admin_authenticated = False
-        try:
-            admin = Admin.objects.get(username=username)
+        # First, try to authenticate as admin (username or email)
+        admin = None
+        admin_qs = Admin.objects.filter(username__iexact=username)
+        if not admin_qs.exists():
+            admin_qs = Admin.objects.filter(email__iexact=username)
+        admin = admin_qs.first()
+
+        if admin:
             if admin.check_password(password):
                 if not admin.is_active:
                     raise serializers.ValidationError({
@@ -149,14 +206,13 @@ class LoginSerializer(serializers.Serializer):
                     })
                 data['admin'] = admin
                 data['user_type'] = 'admin'
-                admin_authenticated = True
                 return data
-        except Admin.DoesNotExist:
-            pass
-        except serializers.ValidationError:
-            # Re-raise validation errors (like disabled account)
-            raise
-        
+            else:
+                # Admin exists but password mismatch
+                raise serializers.ValidationError({
+                    'non_field_errors': ['Invalid username or password.']
+                })
+
         # If admin authentication failed, try regular user authentication
         # This ensures citizen login works even if admin with same username exists
         user = authenticate(username=username, password=password)
