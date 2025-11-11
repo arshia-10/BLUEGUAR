@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
-from .models import Admin, AdminToken, UserProfile, FloodAlert, CitizenReport, OTP
+from .models import Admin, AdminToken, UserProfile, FloodAlert, CitizenReport, OTP, ResponseTeam
 
 
 class UserProfileInline(admin.StackedInline):
@@ -74,10 +74,11 @@ class FloodAlertAdmin(admin.ModelAdmin):
 
 @admin.register(CitizenReport)
 class CitizenReportAdmin(admin.ModelAdmin):
-    list_display = ['reporter_name', 'location', 'status', 'created_at']
-    list_filter = ['status', 'created_at']
+    list_display = ['reporter_name', 'location', 'status', 'assigned_team', 'created_at']
+    list_filter = ['status', 'created_at', 'assigned_team']
     search_fields = ['reporter_name', 'location', 'description']
     readonly_fields = ['created_at', 'updated_at']
+    fields = ['reporter_name', 'reporter_email', 'location', 'description', 'latitude', 'longitude', 'image', 'audio', 'status', 'assigned_team', 'created_at', 'updated_at']
 
 
 @admin.register(OTP)
@@ -90,4 +91,12 @@ class OTPAdmin(admin.ModelAdmin):
     def has_add_permission(self, request):
         # OTPs are generated automatically, so don't allow manual creation
         return False
+
+
+@admin.register(ResponseTeam)
+class ResponseTeamAdmin(admin.ModelAdmin):
+    list_display = ['name', 'status', 'created_at']
+    list_filter = ['status', 'created_at']
+    search_fields = ['name']
+    readonly_fields = ['created_at']
 

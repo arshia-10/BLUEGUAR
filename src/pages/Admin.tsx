@@ -3,9 +3,13 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 import { useEffect, useState } from "react";
-import { reportsAPI, resolveMediaUrl } from "@/lib/api";
+import { reportsAPI, resolveMediaUrl, teamsAPI } from "@/lib/api";
+import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
+import { Loader2 } from "lucide-react";
 
 const Admin = () => {
   const tasks = [
@@ -19,6 +23,17 @@ const Admin = () => {
   const [reports, setReports] = useState<any[]>([]);
   const [isLoadingReports, setIsLoadingReports] = useState<boolean>(false);
   const [reportsError, setReportsError] = useState<string | null>(null);
+  
+  // Teams state
+  const [teams, setTeams] = useState<any[]>([]);
+  const [isLoadingTeams, setIsLoadingTeams] = useState<boolean>(false);
+  const [newTeamName, setNewTeamName] = useState<string>("");
+  const [isAddingTeam, setIsAddingTeam] = useState<boolean>(false);
+  const { toast } = useToast();
+  
+  // Assign team dialog state
+  const [assignDialogOpen, setAssignDialogOpen] = useState<number | null>(null);
+  const [isAssigning, setIsAssigning] = useState<boolean>(false);
 
   const [reportCount, setReportCount] = useState<number | null>(null);
   const [isLoadingCount, setIsLoadingCount] = useState<boolean>(false);
@@ -54,8 +69,87 @@ const Admin = () => {
     };
     fetchReports();
     fetchCount();
-
   }, []);
+
+  // Fetch teams on mount
+  useEffect(() => {
+    const fetchTeams = async () => {
+      setIsLoadingTeams(true);
+      try {
+        const response = await teamsAPI.list();
+        setTeams(response.teams || []);
+      } catch (error: any) {
+        console.error("Error fetching teams:", error);
+        toast({
+          title: "Error",
+          description: error.message || "Failed to load teams",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoadingTeams(false);
+      }
+    };
+    fetchTeams();
+  }, [toast]);
+
+  // Handle adding a new team
+  const handleAddTeam = async () => {
+    if (!newTeamName.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter a team name",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsAddingTeam(true);
+      const response = await teamsAPI.create(newTeamName.trim());
+      setTeams([response.team, ...teams]);
+      setNewTeamName("");
+      toast({
+        title: "Success",
+        description: response.message || "Team added successfully",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to add team",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAddingTeam(false);
+    }
+  };
+
+  // Handle assigning team to report
+  const handleAssignTeam = async (reportId: number, teamId: number) => {
+    try {
+      setIsAssigning(true);
+      const response = await reportsAPI.assignTeam(reportId, teamId);
+      
+      // Update the report in the list
+      setReports(reports.map(r => 
+        r.id === reportId ? response.report : r
+      ));
+      
+      toast({
+        title: "Success",
+        description: response.message || "Team assigned successfully",
+      });
+      
+      setAssignDialogOpen(null);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to assign team",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAssigning(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -105,6 +199,7 @@ const Admin = () => {
               <div className="w-12 h-12 bg-warning/10 rounded-lg flex items-center justify-center">
                 <MapPin className="h-6 w-6 text-warning" />
               </div>
+
               <Badge className="bg-warning text-warning-foreground">12</Badge>
             </div>
             <div className="text-3xl font-bold mb-1">8</div>
@@ -206,8 +301,47 @@ const Admin = () => {
                                 </audio>
                               </div>
                             )}
+                            {r.assigned_team && (
+                              <div className="mt-2">
+                                <Badge variant="outline" className="text-xs">
+                                  Assigned: Team {r.assigned_team.name}
+                                </Badge>
+                              </div>
+                            )}
                           </div>
-                          <Button size="sm" variant="outline">Assign Team</Button>
+                          <Dialog open={assignDialogOpen === r.id} onOpenChange={(open) => setAssignDialogOpen(open ? r.id : null)}>
+                            <DialogTrigger asChild>
+                              <Button size="sm" variant="outline">
+                                {r.assigned_team ? "Change Team" : "Assign Team"}
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>Assign Team to Report</DialogTitle>
+                                <DialogDescription>
+                                  Select a team to assign to this incident report.
+                                </DialogDescription>
+                              </DialogHeader>
+                              <div className="space-y-3 mt-4">
+                                {teams.length === 0 ? (
+                                  <p className="text-sm text-muted-foreground">No teams available. Please add a team first.</p>
+                                ) : (
+                                  teams.map((team) => (
+                                    <Button
+                                      key={team.id}
+                                      variant={r.assigned_team?.id === team.id ? "default" : "outline"}
+                                      className="w-full justify-start"
+                                      onClick={() => handleAssignTeam(r.id, team.id)}
+                                      disabled={isAssigning}
+                                    >
+                                      {r.assigned_team?.id === team.id && <CheckCircle className="mr-2 h-4 w-4" />}
+                                      Team {team.name} ({team.status})
+                                    </Button>
+                                  ))
+                                )}
+                              </div>
+                            </DialogContent>
+                          </Dialog>
                         </div>
                       </div>
                     ))
@@ -269,23 +403,66 @@ const Admin = () => {
             {/* Response Teams */}
             <Card className="p-6">
               <h3 className="text-lg font-semibold mb-4">Response Teams Status</h3>
-              <div className="space-y-3">
-                {["Alpha", "Beta", "Gamma", "Delta"].map((team, idx) => (
-                  <div key={team} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`w-2 h-2 rounded-full ${
-                          idx === 0 ? "bg-success" : idx === 3 ? "bg-warning" : "bg-accent"
-                        }`}
-                      />
-                      <span className="font-medium">Team {team}</span>
-                    </div>
-                    <Badge variant="outline" className="text-xs">
-                      {idx === 0 ? "Active" : idx === 3 ? "Standby" : "Deployed"}
-                    </Badge>
-                  </div>
-                ))}
+              
+              {/* Add Team Input */}
+              <div className="mb-4 flex gap-2">
+                <Input
+                  placeholder="Enter team name"
+                  value={newTeamName}
+                  onChange={(e) => setNewTeamName(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      handleAddTeam();
+                    }
+                  }}
+                  className="flex-1"
+                />
+                <Button
+                  onClick={handleAddTeam}
+                  disabled={isAddingTeam || !newTeamName.trim()}
+                  size="sm"
+                >
+                  {isAddingTeam ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Add Team"
+                  )}
+                </Button>
               </div>
+
+              {/* Teams List */}
+              {isLoadingTeams ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : teams.length === 0 ? (
+                <div className="text-sm text-muted-foreground text-center py-4">
+                  No teams yet. Add a team above.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {teams.map((team) => {
+                    const statusColors: Record<string, string> = {
+                      'Active': 'bg-success',
+                      'Deployed': 'bg-accent',
+                      'Standby': 'bg-warning',
+                    };
+                    return (
+                      <div key={team.id} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`w-2 h-2 rounded-full ${statusColors[team.status] || 'bg-accent'}`}
+                          />
+                          <span className="font-medium">Team {team.name}</span>
+                        </div>
+                        <Badge variant="outline" className="text-xs">
+                          {team.status}
+                        </Badge>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </Card>
 
             {/* Quick Actions */}

@@ -454,6 +454,29 @@ export const reportsAPI = {
     }
     return response.json();
   },
+
+  // Assign team to report
+  assignTeam: async (reportId: number, teamId: number) => {
+    const response = await apiRequest(`/reports/${reportId}/assign-team/`, {
+      method: 'POST',
+      body: JSON.stringify({ team_id: teamId }),
+    });
+
+    if (!response.ok) {
+      let errorMessage = 'Failed to assign team';
+      try {
+        const error = await response.json();
+        if (error.detail) {
+          errorMessage = error.detail;
+        }
+      } catch (e) {
+        errorMessage = `Server error: ${response.status} ${response.statusText}`;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  },
 };
 
 // OTP API functions
@@ -494,6 +517,48 @@ export const otpAPI = {
         const error = await response.json();
         if (error.detail) {
           errorMessage = error.detail;
+        }
+      } catch (e) {
+        errorMessage = `Server error: ${response.status} ${response.statusText}`;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  },
+};
+
+// Teams API functions
+export const teamsAPI = {
+  // Get all teams
+  list: async () => {
+    const response = await apiRequest('/teams/', {
+      method: 'GET',
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch teams');
+    }
+
+    return response.json();
+  },
+
+  // Create a new team
+  create: async (name: string, status: string = 'Active') => {
+    const response = await apiRequest('/teams/create/', {
+      method: 'POST',
+      body: JSON.stringify({ name, status }),
+    });
+
+    if (!response.ok) {
+      let errorMessage = 'Failed to create team';
+      try {
+        const error = await response.json();
+        if (error.detail) {
+          errorMessage = error.detail;
+        } else if (error.errors) {
+          const firstError = Object.values(error.errors)[0];
+          errorMessage = Array.isArray(firstError) ? firstError[0] : firstError;
         }
       } catch (e) {
         errorMessage = `Server error: ${response.status} ${response.statusText}`;

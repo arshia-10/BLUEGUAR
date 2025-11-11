@@ -502,6 +502,13 @@ const Citizen = () => {
                           <div className="text-xs text-muted-foreground mt-1">
                             {formatTimeAgo(report.created_at)}
                           </div>
+                          {report.assigned_team && (
+                            <div className="mt-2">
+                              <Badge variant="default" className="text-xs">
+                                Team Assigned: {report.assigned_team.name}
+                              </Badge>
+                            </div>
+                          )}
                         </div>
                       </div>
                       <Badge 
@@ -514,7 +521,7 @@ const Citizen = () => {
                         }
                         className="flex-shrink-0"
                       >
-                        {report.status}
+                        {report.status === "reviewed" ? "in-progress" : report.status}
                       </Badge>
                     </div>
                     {report.image && (

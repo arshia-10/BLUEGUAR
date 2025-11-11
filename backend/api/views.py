@@ -4,7 +4,7 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.authtoken.models import Token
 from django.conf import settings
-from .models import Admin, AdminToken, CitizenReport, OTP
+from .models import Admin, AdminToken, CitizenReport, OTP, ResponseTeam
 from .serializers import (
     AdminSignupSerializer, 
     CitizenSignupSerializer, 
@@ -12,6 +12,7 @@ from .serializers import (
     UpdateUserSerializer,
     ChangePasswordSerializer,
     CitizenReportSerializer,
+    ResponseTeamSerializer,
 )
 from django.utils import timezone
 from datetime import timedelta
@@ -487,6 +488,13 @@ def get_reports(request):
             # Regular users only see their own reports
             user_email = user.email
             reports = CitizenReport.objects.filter(reporter_email=user_email).order_by('-created_at')
+        
+        # Auto-update status for reports with assigned teams but still pending
+        for report in reports:
+            if report.assigned_team and report.status == 'pending':
+                report.status = 'reviewed'
+                report.save()
+        
         serializer = CitizenReportSerializer(reports, many=True)
         
         return Response({
@@ -511,6 +519,13 @@ def get_all_reports(request):
     """
     try:
         reports = CitizenReport.objects.all().order_by('-created_at')
+        
+        # Auto-update status for reports with assigned teams but still pending
+        for report in reports:
+            if report.assigned_team and report.status == 'pending':
+                report.status = 'reviewed'
+                report.save()
+        
         serializer = CitizenReportSerializer(reports, many=True)
         return Response({'reports': serializer.data}, status=status.HTTP_200_OK)
     except Exception as e:
@@ -626,6 +641,106 @@ def verify_otp(request):
         logger.error(f"OTP verification error: {str(e)}")
         return Response({
             'detail': 'An error occurred while verifying OTP.',
+            'error': str(e) if settings.DEBUG else None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def list_teams(request):
+    """
+    Get all response teams
+    """
+    try:
+        teams = ResponseTeam.objects.all().order_by('-created_at')
+        serializer = ResponseTeamSerializer(teams, many=True)
+        return Response({
+            'teams': serializer.data
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"List teams error: {str(e)}")
+        return Response({
+            'detail': 'An error occurred while fetching teams.',
+            'error': str(e) if settings.DEBUG else None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def create_team(request):
+    """
+    Create a new response team
+    """
+    try:
+        serializer = ResponseTeamSerializer(data=request.data)
+        if serializer.is_valid():
+            team = serializer.save()
+            return Response({
+                'message': 'Team created successfully',
+                'team': ResponseTeamSerializer(team).data
+            }, status=status.HTTP_201_CREATED)
+        
+        return Response({
+            'detail': 'Validation failed',
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Create team error: {str(e)}")
+        return Response({
+            'detail': 'An error occurred while creating team.',
+            'error': str(e) if settings.DEBUG else None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def assign_team_to_report(request, report_id):
+    """
+    Assign a team to a report
+    """
+    try:
+        team_id = request.data.get('team_id')
+        
+        if not team_id:
+            return Response({
+                'detail': 'team_id is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            report = CitizenReport.objects.get(id=report_id)
+        except CitizenReport.DoesNotExist:
+            return Response({
+                'detail': 'Report not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        try:
+            team = ResponseTeam.objects.get(id=team_id)
+        except ResponseTeam.DoesNotExist:
+            return Response({
+                'detail': 'Team not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        report.assigned_team = team
+        # Change status to 'reviewed' (in-progress) when team is assigned
+        report.status = 'reviewed'
+        report.save()
+        
+        serializer = CitizenReportSerializer(report)
+        return Response({
+            'message': 'Team assigned successfully',
+            'report': serializer.data
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Assign team error: {str(e)}")
+        return Response({
+            'detail': 'An error occurred while assigning team.',
             'error': str(e) if settings.DEBUG else None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

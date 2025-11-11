@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
-from .models import Admin, AdminToken, UserProfile, FloodAlert, CitizenReport
+from .models import Admin, AdminToken, UserProfile, FloodAlert, CitizenReport, ResponseTeam
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
@@ -257,19 +257,44 @@ class FloodAlertSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'updated_at']
 
 
+class ResponseTeamSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ResponseTeam
+        fields = '__all__'
+        read_only_fields = ['created_at']
+
+
 class CitizenReportSerializer(serializers.ModelSerializer):
     image = serializers.ImageField(required=False, allow_null=True)
     audio = serializers.FileField(required=False, allow_null=True)
+    assigned_team = ResponseTeamSerializer(read_only=True)
+    assigned_team_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     
     class Meta:
         model = CitizenReport
         fields = '__all__'
-        read_only_fields = ['created_at', 'updated_at', 'status']
+        read_only_fields = ['created_at', 'updated_at']
+        # Note: status can be updated when team is assigned
     
     def create(self, validated_data):
         # Set status to pending by default
         validated_data['status'] = 'pending'
+        # Handle assigned_team_id
+        if 'assigned_team_id' in validated_data:
+            team_id = validated_data.pop('assigned_team_id')
+            if team_id:
+                validated_data['assigned_team_id'] = team_id
         return super().create(validated_data)
+    
+    def update(self, instance, validated_data):
+        # Handle assigned_team_id
+        if 'assigned_team_id' in validated_data:
+            team_id = validated_data.pop('assigned_team_id')
+            if team_id:
+                instance.assigned_team_id = team_id
+            else:
+                instance.assigned_team = None
+        return super().update(instance, validated_data)
 
 
 
