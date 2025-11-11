@@ -325,3 +325,86 @@ export const authAPI = {
   },
 };
 
+// Reports API functions
+export const reportsAPI = {
+  // Create a new report with file uploads
+  createReport: async (data: {
+    location: string;
+    description: string;
+    latitude?: number;
+    longitude?: number;
+    image?: File;
+    audio?: File;
+  }) => {
+    const token = getAuthToken();
+    const formData = new FormData();
+    
+    formData.append('location', data.location);
+    formData.append('description', data.description);
+    
+    if (data.latitude !== undefined) {
+      formData.append('latitude', data.latitude.toString());
+    }
+    if (data.longitude !== undefined) {
+      formData.append('longitude', data.longitude.toString());
+    }
+    if (data.image) {
+      formData.append('image', data.image);
+    }
+    if (data.audio) {
+      formData.append('audio', data.audio);
+    }
+
+    const headers: HeadersInit = {};
+    if (token) {
+      headers['Authorization'] = `Token ${token}`;
+    }
+    // Don't set Content-Type for FormData - browser will set it with boundary
+
+    const API_BASE_URL = import.meta.env.DEV 
+      ? '/api'  
+      : 'http://localhost:8000/api';
+
+    const response = await fetch(`${API_BASE_URL}/reports/create/`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      let errorMessage = 'Failed to submit report';
+      try {
+        const error = await response.json();
+        if (error.detail) {
+          errorMessage = error.detail;
+        } else if (error.errors) {
+          const firstError = Object.values(error.errors)[0];
+          errorMessage = Array.isArray(firstError) ? firstError[0] : firstError;
+        }
+      } catch (e) {
+        errorMessage = `Server error: ${response.status} ${response.statusText}`;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  },
+
+  // Get user's reports
+  getReports: async () => {
+    const response = await apiRequest('/reports/', {
+      method: 'GET',
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        removeAuthToken();
+        throw new Error('Authentication failed. Please login again.');
+      }
+      throw new Error('Failed to fetch reports');
+    }
+
+    return response.json();
+  },
+};
+

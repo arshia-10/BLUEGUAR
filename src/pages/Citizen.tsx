@@ -1,20 +1,256 @@
-import { Bell, MapPin, AlertTriangle, CheckCircle, Camera, Navigation } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Bell, MapPin, AlertTriangle, CheckCircle, Camera, Navigation, Loader2, Mic, MicOff, X, Image as ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { ChatbotButton } from "@/components/ChatbotButton";
+import { reportsAPI } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 
 const Citizen = () => {
+  const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [reports, setReports] = useState<any[]>([]);
+  const [isLoadingReports, setIsLoadingReports] = useState(true);
+  const { toast } = useToast();
+
+  // Voice recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [audioURL, setAudioURL] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+
+  // Image state
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [reportForm, setReportForm] = useState({
+    location: "",
+    description: "",
+    latitude: "",
+    longitude: "",
+  });
+
   const alerts = [
     { id: 1, severity: "high", location: "Downtown District", message: "Heavy rainfall expected. Flood risk elevated.", time: "5 mins ago" },
     { id: 2, severity: "medium", location: "Riverside Area", message: "Water levels rising. Monitor conditions.", time: "15 mins ago" },
     { id: 3, severity: "low", location: "North Zone", message: "Weather improving. Risk decreasing.", time: "1 hour ago" }
   ];
 
-  const recentReports = [
-    { id: 1, type: "Water Accumulation", location: "Main Street", status: "verified", time: "10 mins ago" },
-    { id: 2, type: "Road Blockage", location: "5th Avenue", status: "pending", time: "30 mins ago" }
-  ];
+  // Fetch user's reports
+  useEffect(() => {
+    const fetchReports = async () => {
+      try {
+        setIsLoadingReports(true);
+        const response = await reportsAPI.getReports();
+        setReports(response.reports || []);
+      } catch (error: any) {
+        console.error("Error fetching reports:", error);
+        toast({
+          title: "Error",
+          description: error.message || "Failed to load reports",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoadingReports(false);
+      }
+    };
+
+    fetchReports();
+  }, [toast]);
+
+  // Get current location
+  const getCurrentLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setReportForm({
+            ...reportForm,
+            latitude: position.coords.latitude.toString(),
+            longitude: position.coords.longitude.toString(),
+          });
+        },
+        (error) => {
+          console.error("Error getting location:", error);
+          toast({
+            title: "Location Error",
+            description: "Could not get your location. You can still submit the report manually.",
+            variant: "destructive",
+          });
+        }
+      );
+    }
+  };
+
+  // Handle image selection
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        toast({
+          title: "Image too large",
+          description: "Please select an image smaller than 5MB",
+          variant: "destructive",
+        });
+        return;
+      }
+      setSelectedImage(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Remove selected image
+  const removeImage = () => {
+    setSelectedImage(null);
+    setImagePreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // Start voice recording
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      chunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        setAudioBlob(blob);
+        const url = URL.createObjectURL(blob);
+        setAudioURL(url);
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (error) {
+      console.error("Error starting recording:", error);
+      toast({
+        title: "Recording Error",
+        description: "Could not access microphone. Please check permissions.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Stop voice recording
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  // Remove audio recording
+  const removeAudio = () => {
+    if (audioURL) {
+      URL.revokeObjectURL(audioURL);
+    }
+    setAudioBlob(null);
+    setAudioURL(null);
+  };
+
+  // Handle report submission
+  const handleSubmitReport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!reportForm.location.trim() || !reportForm.description.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in location and description fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      const reportData: any = {
+        location: reportForm.location,
+        description: reportForm.description,
+      };
+
+      if (reportForm.latitude && reportForm.longitude) {
+        reportData.latitude = parseFloat(reportForm.latitude);
+        reportData.longitude = parseFloat(reportForm.longitude);
+      }
+
+      // Add image if selected
+      if (selectedImage) {
+        reportData.image = selectedImage;
+      }
+
+      // Add audio if recorded
+      if (audioBlob) {
+        // Convert blob to File
+        const audioFile = new File([audioBlob], 'recording.webm', { type: 'audio/webm' });
+        reportData.audio = audioFile;
+      }
+
+      const response = await reportsAPI.createReport(reportData);
+      
+      toast({
+        title: "Success",
+        description: response.message || "Report submitted successfully!",
+      });
+
+      // Reset form
+      setReportForm({
+        location: "",
+        description: "",
+        latitude: "",
+        longitude: "",
+      });
+      removeImage();
+      removeAudio();
+
+      // Close dialog
+      setIsReportDialogOpen(false);
+
+      // Refresh reports list
+      const reportsResponse = await reportsAPI.getReports();
+      setReports(reportsResponse.reports || []);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to submit report. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Format time ago
+  const formatTimeAgo = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    
+    if (diffInSeconds < 60) return "just now";
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} mins ago`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
+    return `${Math.floor(diffInSeconds / 86400)} days ago`;
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -44,13 +280,176 @@ const Citizen = () => {
             <Card className="p-6">
               <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
               <div className="grid sm:grid-cols-2 gap-3">
-                <Button variant="outline" className="justify-start h-auto py-4">
-                  <Camera className="mr-3 h-5 w-5" />
-                  <div className="text-left">
-                    <div className="font-semibold">Report Incident</div>
-                    <div className="text-xs text-muted-foreground">Upload photo & location</div>
-                  </div>
-                </Button>
+                <Dialog open={isReportDialogOpen} onOpenChange={setIsReportDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="justify-start h-auto py-4">
+                      <Camera className="mr-3 h-5 w-5" />
+                      <div className="text-left">
+                        <div className="font-semibold">Report Incident</div>
+                        <div className="text-xs text-muted-foreground">Upload photo & location</div>
+                      </div>
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-[500px]">
+                    <DialogHeader>
+                      <DialogTitle>Report Flood Incident</DialogTitle>
+                      <DialogDescription>
+                        Report a flood incident in your area. Your location will help authorities respond quickly.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleSubmitReport} className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="location">Location *</Label>
+                        <Input
+                          id="location"
+                          placeholder="e.g., Main Street, Downtown"
+                          value={reportForm.location}
+                          onChange={(e) => setReportForm({ ...reportForm, location: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="description">Description *</Label>
+                        <Textarea
+                          id="description"
+                          placeholder="Describe the flood incident, water level, affected areas, etc."
+                          value={reportForm.description}
+                          onChange={(e) => setReportForm({ ...reportForm, description: e.target.value })}
+                          rows={4}
+                          required
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={getCurrentLocation}
+                          className="flex-1"
+                        >
+                          <MapPin className="mr-2 h-4 w-4" />
+                          Get My Location
+                        </Button>
+                      </div>
+                      {(reportForm.latitude || reportForm.longitude) && (
+                        <div className="text-xs text-muted-foreground">
+                          Coordinates: {reportForm.latitude}, {reportForm.longitude}
+                        </div>
+                      )}
+                      
+                      {/* Image Upload */}
+                      <div className="space-y-2">
+                        <Label>Image (Optional)</Label>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={handleImageSelect}
+                            className="hidden"
+                            id="image-upload"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="flex-1"
+                          >
+                            <ImageIcon className="mr-2 h-4 w-4" />
+                            {selectedImage ? "Change Image" : "Select Image"}
+                          </Button>
+                          {selectedImage && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={removeImage}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                        {imagePreview && (
+                          <div className="relative mt-2">
+                            <img
+                              src={imagePreview}
+                              alt="Preview"
+                              className="w-full h-48 object-cover rounded-md border"
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Voice Recording */}
+                      <div className="space-y-2">
+                        <Label>Voice Note (Optional)</Label>
+                        <div className="flex items-center gap-2">
+                          {!isRecording && !audioURL && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={startRecording}
+                              className="flex-1"
+                            >
+                              <Mic className="mr-2 h-4 w-4" />
+                              Start Recording
+                            </Button>
+                          )}
+                          {isRecording && (
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              onClick={stopRecording}
+                              className="flex-1"
+                            >
+                              <MicOff className="mr-2 h-4 w-4" />
+                              Stop Recording
+                            </Button>
+                          )}
+                          {audioURL && !isRecording && (
+                            <>
+                              <audio src={audioURL} controls className="flex-1" />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={removeAudio}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                        {isRecording && (
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                            Recording...
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setIsReportDialogOpen(false)}
+                          disabled={isSubmitting}
+                        >
+                          Cancel
+                        </Button>
+                        <Button type="submit" disabled={isSubmitting}>
+                          {isSubmitting ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Submitting...
+                            </>
+                          ) : (
+                            "Submit Report"
+                          )}
+                        </Button>
+                      </div>
+                    </form>
+                  </DialogContent>
+                </Dialog>
                 <Button variant="outline" className="justify-start h-auto py-4">
                   <Navigation className="mr-3 h-5 w-5" />
                   <div className="text-left">
@@ -76,22 +475,45 @@ const Citizen = () => {
             {/* Recent Reports */}
             <Card className="p-6">
               <h3 className="text-lg font-semibold mb-4">Your Recent Reports</h3>
-              <div className="space-y-3">
-                {recentReports.map((report) => (
-                  <div key={report.id} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className="w-2 h-2 rounded-full bg-accent" />
-                      <div>
-                        <div className="font-medium">{report.type}</div>
-                        <div className="text-sm text-muted-foreground">{report.location} • {report.time}</div>
+              {isLoadingReports ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : reports.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <p>No reports yet.</p>
+                  <p className="text-sm mt-1">Click "Report Incident" to submit your first report.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {reports.map((report) => (
+                    <div key={report.id} className="flex items-center justify-between p-3 bg-secondary rounded-lg">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div className="w-2 h-2 rounded-full bg-accent flex-shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <div className="font-medium truncate">{report.location}</div>
+                          <div className="text-sm text-muted-foreground truncate">{report.description}</div>
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {formatTimeAgo(report.created_at)}
+                          </div>
+                        </div>
                       </div>
+                      <Badge 
+                        variant={
+                          report.status === "resolved" 
+                            ? "default" 
+                            : report.status === "reviewed"
+                            ? "secondary"
+                            : "outline"
+                        }
+                        className="ml-2 flex-shrink-0"
+                      >
+                        {report.status}
+                      </Badge>
                     </div>
-                    <Badge variant={report.status === "verified" ? "default" : "secondary"}>
-                      {report.status}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </Card>
           </div>
 

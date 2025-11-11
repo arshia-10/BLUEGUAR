@@ -19,10 +19,7 @@ SECRET_KEY = 'django-insecure-change-this-in-production-!@#$%^&*()'
 DEBUG = True
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']
-
-
 # Application definition
-
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -173,7 +170,7 @@ CORS_EXPOSE_HEADERS = ['content-type', 'authorization']
 # REST Framework settings
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.TokenAuthentication',
+        'api.authentication.AdminTokenAuthentication',  # Custom auth that supports Admin and User tokens
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.AllowAny',
@@ -186,6 +183,8 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PARSER_CLASSES': [
         'rest_framework.parsers.JSONParser',
+        'rest_framework.parsers.MultiPartParser',  # For file uploads
+        'rest_framework.parsers.FormParser',  # For form data
     ],
 }
 

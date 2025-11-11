@@ -1,10 +1,71 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser, User
-from django.contrib.auth.hashers import make_password
+from django.contrib.auth.hashers import make_password, check_password
+from django.utils import timezone
+import secrets
 
 
 # Add your models here
 # Example models for BlueGuard AI Vision:
+
+class Admin(models.Model):
+    """Separate Admin model for admin users"""
+    username = models.CharField(max_length=150, unique=True)
+    email = models.EmailField(unique=True)
+    password = models.CharField(max_length=128)  # Hashed password
+    first_name = models.CharField(max_length=30, blank=True)
+    last_name = models.CharField(max_length=30, blank=True)
+    phone_number = models.CharField(max_length=20, blank=True, null=True)
+    address = models.TextField(blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    last_login = models.DateTimeField(null=True, blank=True)
+    
+    def set_password(self, raw_password):
+        """Hash and set the password"""
+        self.password = make_password(raw_password)
+    
+    def check_password(self, raw_password):
+        """Check if the provided password matches"""
+        return check_password(raw_password, self.password)
+    
+    def save(self, *args, **kwargs):
+        # Always ensure password is hashed - but only if it's a new object or password changed
+        # We'll handle password setting through set_password method to avoid double hashing
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        return f"{self.username} - Admin"
+    
+    class Meta:
+        verbose_name = "Admin"
+        verbose_name_plural = "Admins"
+        ordering = ['-created_at']
+
+
+class AdminToken(models.Model):
+    """Token model for Admin authentication"""
+    admin = models.OneToOneField(Admin, on_delete=models.CASCADE, related_name='auth_token')
+    key = models.CharField(max_length=64, unique=True)
+    created = models.DateTimeField(auto_now_add=True)
+    
+    def save(self, *args, **kwargs):
+        if not self.key:
+            self.key = self.generate_key()
+        return super().save(*args, **kwargs)
+    
+    def generate_key(self):
+        # Generate a 40-character token (similar to Django's Token model)
+        return secrets.token_urlsafe(30)[:40]
+    
+    def __str__(self):
+        return f"Token for {self.admin.username}"
+    
+    class Meta:
+        verbose_name = "Admin Token"
+        verbose_name_plural = "Admin Tokens"
+
 
 class UserProfile(models.Model):
     """Extended user profile with user type"""
@@ -58,7 +119,8 @@ class CitizenReport(models.Model):
     description = models.TextField()
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
-    image = models.ImageField(upload_to='reports/', null=True, blank=True)
+    image = models.ImageField(upload_to='reports/images/', null=True, blank=True)
+    audio = models.FileField(upload_to='reports/audio/', null=True, blank=True)
     status = models.CharField(max_length=50, choices=[
         ('pending', 'Pending'),
         ('reviewed', 'Reviewed'),

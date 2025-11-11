@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
-from .models import UserProfile, FloodAlert, CitizenReport
+from .models import Admin, AdminToken, UserProfile, FloodAlert, CitizenReport
 
 
 class UserProfileInline(admin.StackedInline):
@@ -22,6 +22,37 @@ class UserAdmin(BaseUserAdmin):
 
 admin.site.unregister(User)
 admin.site.register(User, UserAdmin)
+
+
+@admin.register(Admin)
+class AdminAdmin(admin.ModelAdmin):
+    list_display = ['username', 'email', 'first_name', 'last_name', 'is_active', 'last_login', 'created_at']
+    list_filter = ['is_active', 'created_at']
+    search_fields = ['username', 'email', 'first_name', 'last_name', 'phone_number']
+    readonly_fields = ['created_at', 'updated_at', 'last_login']
+    fieldsets = (
+        (None, {'fields': ('username', 'email', 'password')}),
+        ('Personal info', {'fields': ('first_name', 'last_name', 'phone_number', 'address')}),
+        ('Status', {'fields': ('is_active',)}),
+        ('Important dates', {'fields': ('last_login', 'created_at', 'updated_at')}),
+    )
+    
+    def save_model(self, request, obj, form, change):
+        # If password was changed in admin, hash it
+        if 'password' in form.changed_data:
+            obj.set_password(form.cleaned_data['password'])
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(AdminToken)
+class AdminTokenAdmin(admin.ModelAdmin):
+    list_display = ['admin', 'key', 'created']
+    search_fields = ['admin__username', 'key']
+    readonly_fields = ['key', 'created']
+    
+    def has_add_permission(self, request):
+        # Tokens are created automatically, so don't allow manual creation
+        return False
 
 
 @admin.register(UserProfile)

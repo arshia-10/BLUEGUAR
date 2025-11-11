@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
-from .models import UserProfile, FloodAlert, CitizenReport
+from .models import Admin, AdminToken, UserProfile, FloodAlert, CitizenReport
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
@@ -40,11 +40,15 @@ class AdminSignupSerializer(serializers.Serializer):
     address = serializers.CharField(required=False, allow_blank=True)
     
     def validate_username(self, value):
+        if Admin.objects.filter(username=value).exists():
+            raise serializers.ValidationError("Admin username already exists.")
         if User.objects.filter(username=value).exists():
             raise serializers.ValidationError("Username already exists.")
         return value
     
     def validate_email(self, value):
+        if Admin.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Admin email already exists.")
         if User.objects.filter(email=value).exists():
             raise serializers.ValidationError("Email already exists.")
         return value
@@ -54,23 +58,21 @@ class AdminSignupSerializer(serializers.Serializer):
         address = validated_data.pop('address', '')
         password = validated_data.pop('password')
         
-        user = User.objects.create_user(
+        # Create admin without password first
+        admin = Admin(
             username=validated_data['username'],
             email=validated_data['email'],
-            password=password,
             first_name=validated_data.get('first_name', ''),
             last_name=validated_data.get('last_name', ''),
-            is_staff=True,  # Admin users are staff
-        )
-        
-        UserProfile.objects.create(
-            user=user,
-            user_type='admin',
             phone_number=phone_number,
-            address=address
+            address=address,
         )
         
-        return user
+        # Set password using the model's set_password method (this hashes it)
+        admin.set_password(password)
+        admin.save()
+        
+        return admin
 
 
 class CitizenSignupSerializer(serializers.Serializer):
@@ -83,12 +85,20 @@ class CitizenSignupSerializer(serializers.Serializer):
     address = serializers.CharField(required=False, allow_blank=True)
     
     def validate_username(self, value):
+        # Check if username exists in User table (for citizens)
         if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("Username already exists.")
+        # Also check Admin table to prevent conflicts
+        if Admin.objects.filter(username=value).exists():
             raise serializers.ValidationError("Username already exists.")
         return value
     
     def validate_email(self, value):
+        # Check if email exists in User table (for citizens)
         if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Email already exists.")
+        # Also check Admin table to prevent conflicts
+        if Admin.objects.filter(email=value).exists():
             raise serializers.ValidationError("Email already exists.")
         return value
     
@@ -128,19 +138,47 @@ class LoginSerializer(serializers.Serializer):
                 'non_field_errors': ['Must include username and password.']
             })
         
+        # First, try to authenticate as admin
+        admin_authenticated = False
+        try:
+            admin = Admin.objects.get(username=username)
+            if admin.check_password(password):
+                if not admin.is_active:
+                    raise serializers.ValidationError({
+                        'non_field_errors': ['Admin account is disabled.']
+                    })
+                data['admin'] = admin
+                data['user_type'] = 'admin'
+                admin_authenticated = True
+                return data
+        except Admin.DoesNotExist:
+            pass
+        except serializers.ValidationError:
+            # Re-raise validation errors (like disabled account)
+            raise
+        
+        # If admin authentication failed, try regular user authentication
+        # This ensures citizen login works even if admin with same username exists
         user = authenticate(username=username, password=password)
-        if not user:
-            raise serializers.ValidationError({
-                'non_field_errors': ['Invalid username or password.']
-            })
+        if user:
+            if not user.is_active:
+                raise serializers.ValidationError({
+                    'non_field_errors': ['User account is disabled.']
+                })
+            
+            # Check if user has a profile and get user type
+            user_type = 'citizen'  # default
+            if hasattr(user, 'profile'):
+                user_type = user.profile.user_type
+            
+            data['user'] = user
+            data['user_type'] = user_type
+            return data
         
-        if not user.is_active:
-            raise serializers.ValidationError({
-                'non_field_errors': ['User account is disabled.']
-            })
-        
-        data['user'] = user
-        return data
+        # If neither admin nor user authentication succeeded
+        raise serializers.ValidationError({
+            'non_field_errors': ['Invalid username or password.']
+        })
 
 
 class UpdateUserSerializer(serializers.Serializer):
@@ -164,8 +202,16 @@ class FloodAlertSerializer(serializers.ModelSerializer):
 
 
 class CitizenReportSerializer(serializers.ModelSerializer):
+    image = serializers.ImageField(required=False, allow_null=True)
+    audio = serializers.FileField(required=False, allow_null=True)
+    
     class Meta:
         model = CitizenReport
         fields = '__all__'
-        read_only_fields = ['created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at', 'status']
+    
+    def create(self, validated_data):
+        # Set status to pending by default
+        validated_data['status'] = 'pending'
+        return super().create(validated_data)
 
