@@ -522,6 +522,8 @@ def get_all_reports(request):
             'error': str(e) if settings.DEBUG else None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def generate_otp(request):

@@ -24,6 +24,7 @@ const Admin = () => {
   const [isLoadingCount, setIsLoadingCount] = useState<boolean>(false);
   const [countError, setCountError] = useState<string | null>(null);
 
+
   useEffect(() => {
     const fetchReports = async () => {
       try {
@@ -53,6 +54,7 @@ const Admin = () => {
     };
     fetchReports();
     fetchCount();
+
   }, []);
 
   return (

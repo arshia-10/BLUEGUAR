@@ -271,3 +271,6 @@ class CitizenReportSerializer(serializers.ModelSerializer):
         validated_data['status'] = 'pending'
         return super().create(validated_data)
 
+
+
+

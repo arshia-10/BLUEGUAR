@@ -174,3 +174,21 @@ class OTP(models.Model):
     def is_expired(self):
         return timezone.now() > self.expires_at
 
+
+class ResponseTeam(models.Model):
+    """Response teams for admin panel"""
+    STATUS_CHOICES = [
+        ('Active', 'Active'),
+        ('Deployed', 'Deployed'),
+        ('Standby', 'Standby'),
+    ]
+    name = models.CharField(max_length=100, unique=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Active')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return f"{self.name} - {self.status}"
+
