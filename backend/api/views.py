@@ -4,10 +4,11 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.authtoken.models import Token
 from django.conf import settings
+from django.core.files.storage import default_storage
 from .models import Admin, AdminToken, CitizenReport, OTP, ResponseTeam, CompletedTask
 from .serializers import (
-    AdminSignupSerializer, 
-    CitizenSignupSerializer, 
+    AdminSignupSerializer,
+    CitizenSignupSerializer,
     LoginSerializer,
     UpdateUserSerializer,
     ChangePasswordSerializer,
@@ -783,6 +784,47 @@ def complete_report(request, report_id):
         logger.error(f"Complete report error: {str(e)}")
         return Response({
             'detail': 'An error occurred while completing the report.',
+            'error': str(e) if settings.DEBUG else None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['DELETE'])
+@permission_classes([AllowAny])
+def delete_report(request, report_id):
+    """
+    Delete a citizen report along with any associated media files.
+    """
+    try:
+        try:
+            report = CitizenReport.objects.get(id=report_id)
+        except CitizenReport.DoesNotExist:
+            return Response({
+                'detail': 'Report not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        image_name = report.image.name if report.image else None
+        audio_name = report.audio.name if report.audio else None
+
+        report.delete()
+
+        for file_name in (image_name, audio_name):
+            if file_name:
+                try:
+                    if default_storage.exists(file_name):
+                        default_storage.delete(file_name)
+                except Exception:
+                    # Ignore storage deletion errors to avoid failing the request
+                    pass
+
+        return Response({
+            'message': 'Report deleted successfully'
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Delete report error: {str(e)}")
+        return Response({
+            'detail': 'An error occurred while deleting the report.',
             'error': str(e) if settings.DEBUG else None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

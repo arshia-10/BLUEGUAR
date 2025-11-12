@@ -1,4 +1,4 @@
-import { Users, AlertTriangle, TrendingUp, MapPin, CheckCircle, Clock, Filter } from "lucide-react";
+import { Users, AlertTriangle, TrendingUp, MapPin, CheckCircle, Clock, Filter, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +29,7 @@ const Admin = () => {
   const [assignDialogOpen, setAssignDialogOpen] = useState<number | null>(null);
   const [isAssigning, setIsAssigning] = useState<boolean>(false);
   const [completingReportId, setCompletingReportId] = useState<number | null>(null);
+  const [deletingReportId, setDeletingReportId] = useState<number | null>(null);
 
   const [reportCount, setReportCount] = useState<number | null>(null);
   const [isLoadingCount, setIsLoadingCount] = useState<boolean>(false);
@@ -168,6 +169,34 @@ const Admin = () => {
       });
     } finally {
       setCompletingReportId(null);
+    }
+  };
+
+  const handleDeleteReport = async (reportId: number) => {
+    const confirmDelete = window.confirm("Are you sure you want to delete this report?");
+    if (!confirmDelete) {
+      return;
+    }
+
+    try {
+      setDeletingReportId(reportId);
+      await reportsAPI.deleteReport(reportId);
+
+      setReports((prevReports) => prevReports.filter((r) => r.id !== reportId));
+      setReportCount((prevCount) => (typeof prevCount === "number" ? Math.max(prevCount - 1, 0) : prevCount));
+
+      toast({
+        title: "Report Deleted",
+        description: "The report has been removed successfully.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete the report",
+        variant: "destructive",
+      });
+    } finally {
+      setDeletingReportId(null);
     }
   };
 
@@ -323,7 +352,7 @@ const Admin = () => {
                   ) : (
                         reports.map((r) => (
                       <div key={r.id} className="p-4 bg-secondary rounded-lg hover:shadow-md transition-shadow">
-                        <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-start justify-between gap-3 mb-2">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-1">
                               <Badge
@@ -372,7 +401,7 @@ const Admin = () => {
                               </div>
                             )}
                           </div>
-                            <div className="flex flex-col gap-2 items-stretch sm:flex-row sm:items-center sm:justify-end mt-2 sm:mt-0">
+                            <div className="flex flex-col gap-2 items-stretch sm:items-end sm:justify-end mt-2 sm:mt-0">
                               <Dialog open={assignDialogOpen === r.id} onOpenChange={(open) => setAssignDialogOpen(open ? r.id : null)}>
                                 <DialogTrigger asChild>
                                   <Button size="sm" variant="outline">
@@ -425,6 +454,21 @@ const Admin = () => {
                                   )}
                                 </Button>
                               )}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-destructive hover:text-destructive focus-visible:ring-destructive"
+                                onClick={() => handleDeleteReport(r.id)}
+                                disabled={deletingReportId === r.id}
+                                aria-label="Delete report"
+                                title="Delete report"
+                              >
+                                {deletingReportId === r.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                              </Button>
                             </div>
                         </div>
                       </div>

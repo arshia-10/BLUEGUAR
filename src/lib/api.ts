@@ -500,6 +500,33 @@ export const reportsAPI = {
 
     return response.json();
   },
+
+  // Delete a report
+  deleteReport: async (reportId: number) => {
+    const response = await apiRequest(`/reports/${reportId}/delete/`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      let errorMessage = 'Failed to delete report';
+      try {
+        const error = await response.json();
+        if (error.detail) {
+          errorMessage = error.detail;
+        }
+      } catch (e) {
+        errorMessage = `Server error: ${response.status} ${response.statusText}`;
+      }
+      throw new Error(errorMessage);
+    }
+
+    // Some DELETE responses may not include JSON
+    try {
+      return await response.json();
+    } catch {
+      return { message: 'Report deleted successfully' };
+    }
+  },
 };
 
 // OTP API functions
