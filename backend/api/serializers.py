@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
-from .models import Admin, AdminToken, UserProfile, FloodAlert, CitizenReport, ResponseTeam
+from .models import Admin, AdminToken, UserProfile, FloodAlert, CitizenReport, ResponseTeam, CompletedTask
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
@@ -264,11 +264,19 @@ class ResponseTeamSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at']
 
 
+class CompletedTaskSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CompletedTask
+        fields = ['notes', 'completed_at']
+        read_only_fields = ['completed_at']
+
+
 class CitizenReportSerializer(serializers.ModelSerializer):
     image = serializers.ImageField(required=False, allow_null=True)
     audio = serializers.FileField(required=False, allow_null=True)
     assigned_team = ResponseTeamSerializer(read_only=True)
     assigned_team_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    completed_task = CompletedTaskSerializer(read_only=True)
     
     class Meta:
         model = CitizenReport

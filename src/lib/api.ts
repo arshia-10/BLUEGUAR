@@ -477,6 +477,29 @@ export const reportsAPI = {
 
     return response.json();
   },
+
+  // Mark report as completed
+  completeReport: async (reportId: number, notes?: string) => {
+    const response = await apiRequest(`/reports/${reportId}/complete/`, {
+      method: 'POST',
+      body: JSON.stringify({ notes }),
+    });
+
+    if (!response.ok) {
+      let errorMessage = 'Failed to mark report as completed';
+      try {
+        const error = await response.json();
+        if (error.detail) {
+          errorMessage = error.detail;
+        }
+      } catch (e) {
+        errorMessage = `Server error: ${response.status} ${response.statusText}`;
+      }
+      throw new Error(errorMessage);
+    }
+
+    return response.json();
+  },
 };
 
 // OTP API functions

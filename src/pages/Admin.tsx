@@ -5,19 +5,13 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { reportsAPI, resolveMediaUrl, teamsAPI } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 
 const Admin = () => {
-  const tasks = [
-    { id: 1, title: "Inspect drainage system - Zone A", assignee: "Team Alpha", progress: 75, status: "in-progress" },
-    { id: 2, title: "Deploy sandbags - Riverside", assignee: "Team Beta", progress: 100, status: "completed" },
-    { id: 3, title: "Evacuate low-lying areas", assignee: "Team Gamma", progress: 40, status: "in-progress" },
-    { id: 4, title: "Set up emergency shelter", assignee: "Team Delta", progress: 0, status: "pending" }
-  ];
 
   // Citizen reports fetched from backend
   const [reports, setReports] = useState<any[]>([]);
@@ -34,6 +28,7 @@ const Admin = () => {
   // Assign team dialog state
   const [assignDialogOpen, setAssignDialogOpen] = useState<number | null>(null);
   const [isAssigning, setIsAssigning] = useState<boolean>(false);
+  const [completingReportId, setCompletingReportId] = useState<number | null>(null);
 
   const [reportCount, setReportCount] = useState<number | null>(null);
   const [isLoadingCount, setIsLoadingCount] = useState<boolean>(false);
@@ -47,7 +42,8 @@ const Admin = () => {
         setReportsError(null);
         // Use public all-reports endpoint for admin dashboard
         const res = await reportsAPI.getAllReports();
-        setReports(res.reports || []);
+        const fetchedReports = res.reports || [];
+        setReports(fetchedReports);
       } catch (e: any) {
         setReportsError(e.message || "Failed to load reports");
       } finally {
@@ -130,9 +126,9 @@ const Admin = () => {
       const response = await reportsAPI.assignTeam(reportId, teamId);
       
       // Update the report in the list
-      setReports(reports.map(r => 
-        r.id === reportId ? response.report : r
-      ));
+      setReports((prevReports) =>
+        prevReports.map((r) => (r.id === reportId ? response.report : r))
+      );
       
       toast({
         title: "Success",
@@ -149,6 +145,63 @@ const Admin = () => {
     } finally {
       setIsAssigning(false);
     }
+  };
+
+  const handleCompleteReport = async (reportId: number) => {
+    try {
+      setCompletingReportId(reportId);
+      const response = await reportsAPI.completeReport(reportId);
+
+      setReports((prevReports) =>
+        prevReports.map((r) => (r.id === reportId ? response.report : r))
+      );
+
+      toast({
+        title: "Task Completed",
+        description: response.message || "Report marked as resolved",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to mark report as completed",
+        variant: "destructive",
+      });
+    } finally {
+      setCompletingReportId(null);
+    }
+  };
+
+  const assignedReports = useMemo(() => {
+    return reports.filter((report) => report.assigned_team);
+  }, [reports]);
+
+  const activeAssignedReports = useMemo(() => {
+    return assignedReports.filter((report) => report.status !== "resolved");
+  }, [assignedReports]);
+
+  const completedReports = useMemo(() => {
+    return reports.filter((report) => report.status === "resolved");
+  }, [reports]);
+
+  const resolvedTodayCount = useMemo(() => {
+    const today = new Date();
+    return completedReports.filter((report) => {
+      const completedAt =
+        report.completed_task?.completed_at || report.updated_at || report.created_at;
+      if (!completedAt) return false;
+      const completedDate = new Date(completedAt);
+      return (
+        completedDate.getFullYear() === today.getFullYear() &&
+        completedDate.getMonth() === today.getMonth() &&
+        completedDate.getDate() === today.getDate()
+      );
+    }).length;
+  }, [completedReports]);
+
+  const getProgressForStatus = (status: string) => {
+    if (status === "resolved") return 100;
+    if (status === "reviewed") return 60;
+    return 20;
   };
 
   return (
@@ -177,10 +230,16 @@ const Admin = () => {
               <div className="w-12 h-12 bg-accent/10 rounded-lg flex items-center justify-center">
                 <Users className="h-6 w-6 text-accent" />
               </div>
-              <Badge className="bg-accent text-accent-foreground">Live</Badge>
+              <Badge className="bg-accent text-accent-foreground">
+                {assignedReports.length > 0 ? "Live" : "Idle"}
+              </Badge>
             </div>
-            <div className="text-3xl font-bold mb-1">156</div>
-            <div className="text-sm text-muted-foreground">Response Teams</div>
+            <div className="text-3xl font-bold mb-1">
+              {isLoadingReports ? "…" : assignedReports.length}
+            </div>
+            <div className="text-sm text-muted-foreground">
+              Active Response Assignments
+            </div>
           </Card>
 
           <Card className="p-6">
@@ -188,9 +247,13 @@ const Admin = () => {
               <div className="w-12 h-12 bg-success/10 rounded-lg flex items-center justify-center">
                 <CheckCircle className="h-6 w-6 text-success" />
               </div>
-              <Badge className="bg-success text-success-foreground">98%</Badge>
+              <Badge className="bg-success text-success-foreground">
+                {resolvedTodayCount > 0 ? "Updated" : "Waiting"}
+              </Badge>
             </div>
-            <div className="text-3xl font-bold mb-1">342</div>
+            <div className="text-3xl font-bold mb-1">
+              {isLoadingReports ? "…" : resolvedTodayCount}
+            </div>
             <div className="text-sm text-muted-foreground">Resolved Today</div>
           </Card>
 
@@ -258,7 +321,7 @@ const Admin = () => {
                   {reports.length === 0 ? (
                     <div className="text-sm text-muted-foreground">No incidents reported yet.</div>
                   ) : (
-                    reports.map((r) => (
+                        reports.map((r) => (
                       <div key={r.id} className="p-4 bg-secondary rounded-lg hover:shadow-md transition-shadow">
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex-1">
@@ -309,39 +372,60 @@ const Admin = () => {
                               </div>
                             )}
                           </div>
-                          <Dialog open={assignDialogOpen === r.id} onOpenChange={(open) => setAssignDialogOpen(open ? r.id : null)}>
-                            <DialogTrigger asChild>
-                              <Button size="sm" variant="outline">
-                                {r.assigned_team ? "Change Team" : "Assign Team"}
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>Assign Team to Report</DialogTitle>
-                                <DialogDescription>
-                                  Select a team to assign to this incident report.
-                                </DialogDescription>
-                              </DialogHeader>
-                              <div className="space-y-3 mt-4">
-                                {teams.length === 0 ? (
-                                  <p className="text-sm text-muted-foreground">No teams available. Please add a team first.</p>
-                                ) : (
-                                  teams.map((team) => (
-                                    <Button
-                                      key={team.id}
-                                      variant={r.assigned_team?.id === team.id ? "default" : "outline"}
-                                      className="w-full justify-start"
-                                      onClick={() => handleAssignTeam(r.id, team.id)}
-                                      disabled={isAssigning}
-                                    >
-                                      {r.assigned_team?.id === team.id && <CheckCircle className="mr-2 h-4 w-4" />}
-                                      Team {team.name} ({team.status})
-                                    </Button>
-                                  ))
-                                )}
-                              </div>
-                            </DialogContent>
-                          </Dialog>
+                            <div className="flex flex-col gap-2 items-stretch sm:flex-row sm:items-center sm:justify-end mt-2 sm:mt-0">
+                              <Dialog open={assignDialogOpen === r.id} onOpenChange={(open) => setAssignDialogOpen(open ? r.id : null)}>
+                                <DialogTrigger asChild>
+                                  <Button size="sm" variant="outline">
+                                    {r.assigned_team ? "Change Team" : "Assign Team"}
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                  <DialogHeader>
+                                    <DialogTitle>Assign Team to Report</DialogTitle>
+                                    <DialogDescription>
+                                      Select a team to assign to this incident report.
+                                    </DialogDescription>
+                                  </DialogHeader>
+                                  <div className="space-y-3 mt-4">
+                                    {teams.length === 0 ? (
+                                      <p className="text-sm text-muted-foreground">No teams available. Please add a team first.</p>
+                                    ) : (
+                                      teams.map((team) => (
+                                        <Button
+                                          key={team.id}
+                                          variant={r.assigned_team?.id === team.id ? "default" : "outline"}
+                                          className="w-full justify-start"
+                                          onClick={() => handleAssignTeam(r.id, team.id)}
+                                          disabled={isAssigning}
+                                        >
+                                          {r.assigned_team?.id === team.id && <CheckCircle className="mr-2 h-4 w-4" />}
+                                          Team {team.name} ({team.status})
+                                        </Button>
+                                      ))
+                                    )}
+                                  </div>
+                                </DialogContent>
+                              </Dialog>
+                              {r.status === "resolved" ? (
+                                <Badge variant="default" className="text-xs flex items-center gap-1">
+                                  <CheckCircle className="h-3 w-3" />
+                                  Completed
+                                </Badge>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="default"
+                                  onClick={() => handleCompleteReport(r.id)}
+                                  disabled={completingReportId === r.id}
+                                >
+                                  {completingReportId === r.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    "Mark Completed"
+                                  )}
+                                </Button>
+                              )}
+                            </div>
                         </div>
                       </div>
                     ))
@@ -359,42 +443,51 @@ const Admin = () => {
                 <CheckCircle className="h-5 w-5" />
                 Active Tasks
               </h3>
-              <div className="space-y-4">
-                {tasks.map((task) => (
-                  <div key={task.id} className="space-y-2">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="font-medium text-sm mb-1">{task.title}</div>
-                        <div className="text-xs text-muted-foreground mb-2">{task.assignee}</div>
+              {activeAssignedReports.length === 0 ? (
+                <div className="text-sm text-muted-foreground">
+                  No active tasks right now. Assign a team or complete existing tasks to update this area.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {activeAssignedReports.map((report) => {
+                    const status = report.status;
+                    const progress = getProgressForStatus(status);
+
+                    return (
+                      <div key={report.id} className="space-y-2">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="font-medium text-sm mb-1">
+                              {report.description || "Citizen report"}
+                            </div>
+                            <div className="text-xs text-muted-foreground mb-2">
+                              Team {report.assigned_team?.name || "Unassigned"} • {report.location}
+                            </div>
+                          </div>
+                          <Badge
+                            variant={
+                              status === "reviewed"
+                                ? "secondary"
+                                : "outline"
+                            }
+                            className="text-xs"
+                          >
+                            <Clock className="h-3 w-3 mr-1" />
+                            {status === "reviewed" ? "in-progress" : status}
+                          </Badge>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-xs text-muted-foreground">
+                            <span>Progress</span>
+                            <span>{progress}%</span>
+                          </div>
+                          <Progress value={progress} className="h-2" />
+                        </div>
                       </div>
-                      <Badge
-                        variant={
-                          task.status === "completed"
-                            ? "default"
-                            : task.status === "in-progress"
-                            ? "secondary"
-                            : "outline"
-                        }
-                        className="text-xs"
-                      >
-                        {task.status === "completed" ? (
-                          <CheckCircle className="h-3 w-3 mr-1" />
-                        ) : task.status === "in-progress" ? (
-                          <Clock className="h-3 w-3 mr-1" />
-                        ) : null}
-                        {task.status}
-                      </Badge>
-                    </div>
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>Progress</span>
-                        <span>{task.progress}%</span>
-                      </div>
-                      <Progress value={task.progress} className="h-2" />
-                    </div>
-                  </div>
-                ))}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
               <Button className="w-full mt-4" variant="outline" size="sm">
                 View All Tasks
               </Button>
@@ -458,6 +551,50 @@ const Admin = () => {
                         <Badge variant="outline" className="text-xs">
                           {team.status}
                         </Badge>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Card>
+
+            {/* Completed Tasks */}
+            <Card className="p-6">
+              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <CheckCircle className="h-5 w-5 text-success" />
+                Completed Tasks
+              </h3>
+              {completedReports.length === 0 ? (
+                <div className="text-sm text-muted-foreground">
+                  No tasks completed yet. When a report is marked completed, it will appear here.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {completedReports.map((report) => {
+                    const completedAt =
+                      report.completed_task?.completed_at || report.updated_at || report.created_at;
+                    return (
+                      <div key={report.id} className="p-3 bg-secondary rounded-lg">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1">
+                            <div className="font-medium text-sm mb-1">
+                              {report.description || "Citizen report"}
+                            </div>
+                            <div className="text-xs text-muted-foreground mb-1">
+                              {report.assigned_team
+                                ? `Team ${report.assigned_team.name}`
+                                : "Team unassigned"}{" "}
+                              • {report.location}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Completed on {new Date(completedAt).toLocaleString()}
+                            </div>
+                          </div>
+                          <Badge variant="default" className="text-xs flex items-center gap-1">
+                            <CheckCircle className="h-3 w-3" />
+                            Done
+                          </Badge>
+                        </div>
                       </div>
                     );
                   })}

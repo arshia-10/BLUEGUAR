@@ -139,6 +139,19 @@ class CitizenReport(models.Model):
         return f"Report from {self.reporter_name} at {self.location}"
 
 
+class CompletedTask(models.Model):
+    """Tracks reports that have been completed"""
+    report = models.OneToOneField(CitizenReport, on_delete=models.CASCADE, related_name='completed_task')
+    notes = models.TextField(blank=True)
+    completed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-completed_at']
+
+    def __str__(self):
+        return f"Completed task for report #{self.report_id}"
+
+
 class ReportUpvote(models.Model):
     """Track which users upvoted which reports"""
     report = models.ForeignKey(CitizenReport, on_delete=models.CASCADE, related_name='upvotes')

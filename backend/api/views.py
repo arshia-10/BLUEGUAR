@@ -4,7 +4,7 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.authtoken.models import Token
 from django.conf import settings
-from .models import Admin, AdminToken, CitizenReport, OTP, ResponseTeam
+from .models import Admin, AdminToken, CitizenReport, OTP, ResponseTeam, CompletedTask
 from .serializers import (
     AdminSignupSerializer, 
     CitizenSignupSerializer, 
@@ -13,6 +13,7 @@ from .serializers import (
     ChangePasswordSerializer,
     CitizenReportSerializer,
     ResponseTeamSerializer,
+    CompletedTaskSerializer,
 )
 from django.utils import timezone
 from datetime import timedelta
@@ -741,6 +742,47 @@ def assign_team_to_report(request, report_id):
         logger.error(f"Assign team error: {str(e)}")
         return Response({
             'detail': 'An error occurred while assigning team.',
+            'error': str(e) if settings.DEBUG else None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def complete_report(request, report_id):
+    """
+    Mark a report as completed and record completion details
+    """
+    try:
+        notes = request.data.get('notes', '').strip()
+
+        try:
+            report = CitizenReport.objects.get(id=report_id)
+        except CitizenReport.DoesNotExist:
+            return Response({
+                'detail': 'Report not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        report.status = 'resolved'
+        report.save()
+
+        completed_task, _ = CompletedTask.objects.update_or_create(
+            report=report,
+            defaults={'notes': notes}
+        )
+
+        serializer = CitizenReportSerializer(report)
+
+        return Response({
+            'message': 'Report marked as completed',
+            'report': serializer.data,
+            'completed_task': CompletedTaskSerializer(completed_task).data
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Complete report error: {str(e)}")
+        return Response({
+            'detail': 'An error occurred while completing the report.',
             'error': str(e) if settings.DEBUG else None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

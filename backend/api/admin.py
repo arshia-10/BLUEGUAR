@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import User
-from .models import Admin, AdminToken, UserProfile, FloodAlert, CitizenReport, OTP, ResponseTeam
+from .models import Admin, AdminToken, UserProfile, FloodAlert, CitizenReport, OTP, ResponseTeam, CompletedTask
 
 
 class UserProfileInline(admin.StackedInline):
@@ -99,4 +99,11 @@ class ResponseTeamAdmin(admin.ModelAdmin):
     list_filter = ['status', 'created_at']
     search_fields = ['name']
     readonly_fields = ['created_at']
+
+
+@admin.register(CompletedTask)
+class CompletedTaskAdmin(admin.ModelAdmin):
+    list_display = ['report', 'completed_at']
+    search_fields = ['report__reporter_name', 'report__location']
+    readonly_fields = ['completed_at']
 

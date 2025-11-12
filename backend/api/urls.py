@@ -16,6 +16,7 @@ urlpatterns = [
     path('reports/count/', views.get_report_count, name='get-report-count'),
     path('reports/all/', views.get_all_reports, name='get-all-reports'),
     path('reports/<int:report_id>/assign-team/', views.assign_team_to_report, name='assign-team-to-report'),
+    path('reports/<int:report_id>/complete/', views.complete_report, name='complete-report'),
     path('teams/', views.list_teams, name='list-teams'),
     path('teams/create/', views.create_team, name='create-team'),
 ]
