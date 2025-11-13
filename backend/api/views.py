@@ -409,6 +409,10 @@ def create_report(request):
     """
     Create a new citizen report - handles file uploads (image and audio)
     """
+    import logging
+    import traceback
+    logger = logging.getLogger(__name__)
+    
     try:
         # Get user information for the report
         user = request.user
@@ -422,12 +426,22 @@ def create_report(request):
             reporter_name = f"{user.first_name} {user.last_name}".strip() or user.username
             reporter_email = user.email
         
+        # Log incoming request data for debugging
+        logger.info(f"Create report request received from {reporter_email}")
+        logger.info(f"Request data type: {type(request.data)}")
+        logger.info(f"Request content type: {request.content_type}")
+        
         # Prepare data with user info
-        # DRF's request.data automatically handles both JSON and FormData
-        # Convert QueryDict to regular dict for easier handling
+        # For FormData requests, we need to handle QueryDict specially
         from django.http import QueryDict
-        if isinstance(request.data, QueryDict):
-            report_data = request.data.dict()
+        report_data = {}
+        
+        # Copy all form fields from request.data
+        if hasattr(request.data, 'items'):
+            for key, value in request.data.items():
+                # Skip files, we'll handle them separately
+                if key not in ['image', 'audio']:
+                    report_data[key] = value
         else:
             report_data = dict(request.data) if hasattr(request, 'data') else {}
         
@@ -436,15 +450,18 @@ def create_report(request):
         report_data['reporter_email'] = reporter_email
         
         # Handle file uploads - image and audio
-        # Files need to be added separately from request.FILES
         if 'image' in request.FILES:
             report_data['image'] = request.FILES['image']
         if 'audio' in request.FILES:
             report_data['audio'] = request.FILES['audio']
         
+        logger.info(f"Final report_data keys: {list(report_data.keys())}")
+        logger.info(f"Report data: location={report_data.get('location')}, description={report_data.get('description')}")
+        
         serializer = CitizenReportSerializer(data=report_data)
         if serializer.is_valid():
             report = serializer.save()
+            logger.info(f"Report created successfully with ID {report.id}")
             return Response({
                 'message': 'Report submitted successfully',
                 'report': {
@@ -458,14 +475,14 @@ def create_report(request):
                 }
             }, status=status.HTTP_201_CREATED)
         
+        # Log validation errors
+        logger.error(f"Validation errors: {serializer.errors}")
+        logger.error(f"Serializer is_valid returned False")
         return Response({
             'detail': 'Validation failed',
             'errors': serializer.errors
         }, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        import logging
-        import traceback
-        logger = logging.getLogger(__name__)
         logger.error(f"Report creation error: {str(e)}")
         logger.error(traceback.format_exc())
         return Response({

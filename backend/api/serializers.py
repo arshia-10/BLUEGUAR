@@ -278,14 +278,24 @@ class CitizenReportSerializer(serializers.ModelSerializer):
     assigned_team_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     completed_task = CompletedTaskSerializer(read_only=True)
     
+    # Explicitly define required fields for clarity
+    location = serializers.CharField(required=True, allow_blank=False)
+    description = serializers.CharField(required=True, allow_blank=False)
+    reporter_name = serializers.CharField(required=True, allow_blank=False)
+    reporter_email = serializers.EmailField(required=True)
+    
     class Meta:
         model = CitizenReport
-        fields = '__all__'
-        read_only_fields = ['created_at', 'updated_at']
-        # Note: status can be updated when team is assigned
+        fields = [
+            'id', 'reporter_name', 'reporter_email', 'location', 'description',
+            'latitude', 'longitude', 'image', 'audio', 'status',
+            'assigned_team', 'assigned_team_id', 'completed_task',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'assigned_team', 'completed_task']
     
     def create(self, validated_data):
-        # Set status to pending by default
+        # Set status to pending by default (only when creating)
         validated_data['status'] = 'pending'
         # Handle assigned_team_id
         if 'assigned_team_id' in validated_data:
