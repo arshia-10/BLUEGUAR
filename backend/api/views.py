@@ -5,6 +5,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.authtoken.models import Token
 from django.conf import settings
 from django.core.files.storage import default_storage
+from django.views.decorators.csrf import csrf_exempt
 from .models import Admin, AdminToken, CitizenReport, OTP, ResponseTeam, CompletedTask
 from .serializers import (
     AdminSignupSerializer,
@@ -38,6 +39,28 @@ def api_root(request):
             'logout': '/api/auth/logout/',
             'user_info': '/api/auth/user/',
         }
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+def debug_request(request):
+    """
+    Debug endpoint to see what's being sent in requests
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"=== DEBUG REQUEST ===")
+    logger.info(f"Method: {request.method}")
+    logger.info(f"Content-Type: {request.content_type}")
+    logger.info(f"Headers: {dict(request.headers)}")
+    logger.info(f"Request.data type: {type(request.data)}")
+    logger.info(f"Request.data: {request.data}")
+    logger.info(f"Request.FILES: {request.FILES}")
+    logger.info(f"Raw body length: {len(request.body) if request.body else 0}")
+    
+    return Response({
+        'debug': 'Check server logs for request details'
     }, status=status.HTTP_200_OK)
 
 
@@ -130,7 +153,15 @@ def citizen_signup(request):
     Citizen user signup endpoint
     Handles file uploads (aadhaar card)
     """
+    import logging
+    import traceback
+    logger = logging.getLogger(__name__)
+    
     try:
+        logger.info(f"Citizen signup request received")
+        logger.info(f"Request data type: {type(request.data)}")
+        logger.info(f"Request data keys: {list(request.data.keys()) if hasattr(request.data, 'keys') else 'N/A'}")
+        
         # Prepare data - handle both JSON and FormData
         from django.http import QueryDict
         if isinstance(request.data, QueryDict):
@@ -142,12 +173,16 @@ def citizen_signup(request):
         if 'aadhaar_card' in request.FILES:
             signup_data['aadhaar_card'] = request.FILES['aadhaar_card']
         
+        logger.info(f"Signup data keys: {list(signup_data.keys())}")
+        logger.info(f"Signup data: {signup_data}")
+        
         serializer = CitizenSignupSerializer(data=signup_data)
         if serializer.is_valid():
             user = serializer.save()
             # Delete any existing token for this user and create a new one
             Token.objects.filter(user=user).delete()
             token = Token.objects.create(user=user)
+            logger.info(f"Citizen signup successful for user: {user.username}")
             return Response({
                 'message': 'Citizen account created successfully',
                 'user': {
@@ -161,6 +196,8 @@ def citizen_signup(request):
                 'token': token.key,
             }, status=status.HTTP_201_CREATED)
         
+        # Log validation errors
+        logger.error(f"Citizen signup validation failed: {serializer.errors}")
         # Return validation errors with proper format
         return Response({
             'detail': 'Validation failed',
@@ -168,9 +205,6 @@ def citizen_signup(request):
         }, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
         # Log the error for debugging
-        import logging
-        import traceback
-        logger = logging.getLogger(__name__)
         logger.error(f"Citizen signup error: {str(e)}")
         logger.error(traceback.format_exc())
         return Response({
@@ -185,6 +219,12 @@ def user_login(request):
     """
     User login endpoint - checks Admin table first, then User table
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"Login request received")
+    logger.info(f"Request data: {request.data}")
+    
     serializer = LoginSerializer(data=request.data)
     if serializer.is_valid():
         validated_data = serializer.validated_data
@@ -203,6 +243,7 @@ def user_login(request):
             admin.last_login = timezone.now()
             admin.save()
             
+            logger.info(f"Admin login successful: {admin.username}")
             return Response({
                 'message': 'Login successful',
                 'user': {
@@ -232,6 +273,7 @@ def user_login(request):
             if hasattr(user, 'profile') and user.profile.user_type:
                 user_type = user.profile.user_type
             
+            logger.info(f"Citizen login successful: {user.username}")
             return Response({
                 'message': 'Login successful',
                 'user': {
@@ -254,6 +296,7 @@ def user_login(request):
         }, status=status.HTTP_400_BAD_REQUEST)
     
     # Return proper error message for invalid credentials
+    logger.error(f"Login validation failed: {serializer.errors}")
     error_message = "Invalid username or password"
     if serializer.errors:
         if 'non_field_errors' in serializer.errors:

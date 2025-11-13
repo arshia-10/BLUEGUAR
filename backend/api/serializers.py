@@ -278,12 +278,6 @@ class CitizenReportSerializer(serializers.ModelSerializer):
     assigned_team_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     completed_task = CompletedTaskSerializer(read_only=True)
     
-    # Explicitly define required fields for clarity
-    location = serializers.CharField(required=True, allow_blank=False)
-    description = serializers.CharField(required=True, allow_blank=False)
-    reporter_name = serializers.CharField(required=True, allow_blank=False)
-    reporter_email = serializers.EmailField(required=True)
-    
     class Meta:
         model = CitizenReport
         fields = [
