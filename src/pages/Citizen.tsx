@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Bell, MapPin, AlertTriangle, CheckCircle, Camera, Navigation, Loader2, Mic, MicOff, X, Image as ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { ChatbotButton } from "@/components/ChatbotButton";
 import { reportsAPI, resolveMediaUrl } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import LocationMap, { MapMarker } from "@/components/LocationMap";
 
 const Citizen = () => {
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
@@ -90,6 +91,36 @@ const Citizen = () => {
       );
     }
   };
+
+  const reportMarkers = useMemo(() => {
+    return reports
+      .filter((report) => report.latitude && report.longitude)
+      .map((report) => {
+        const lat = typeof report.latitude === "string" ? parseFloat(report.latitude) : report.latitude;
+        const lng = typeof report.longitude === "string" ? parseFloat(report.longitude) : report.longitude;
+
+        if (
+          typeof lat !== "number" ||
+          typeof lng !== "number" ||
+          Number.isNaN(lat) ||
+          Number.isNaN(lng)
+        ) {
+          return null;
+        }
+
+        const timestamp = report.updated_at || report.created_at;
+
+        return {
+          id: report.id,
+          position: [lat, lng] as [number, number],
+          title: report.location,
+          description: report.description,
+          status: report.status,
+          timestamp: timestamp ? new Date(timestamp).toLocaleString() : undefined,
+        } satisfies MapMarker;
+      })
+      .filter((marker): marker is MapMarker => Boolean(marker));
+  }, [reports]);
 
   // Handle image selection
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -468,13 +499,11 @@ const Citizen = () => {
             {/* Interactive Map */}
             <Card className="p-6">
               <h3 className="text-lg font-semibold mb-4">Live Flood Map</h3>
-              <div className="bg-secondary rounded-lg h-96 flex items-center justify-center">
-                <div className="text-center text-muted-foreground">
-                  <MapPin className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p>Interactive map with real-time flood zones</p>
-                  <p className="text-sm mt-1">GPS-tagged incidents and safe routes</p>
-                </div>
-              </div>
+              <LocationMap
+                markers={reportMarkers}
+                height="24rem"
+                emptyMessage="Reports with GPS data will appear on the map once submitted."
+              />
             </Card>
 
             {/* Recent Reports */}

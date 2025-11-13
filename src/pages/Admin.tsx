@@ -10,6 +10,7 @@ import { reportsAPI, resolveMediaUrl, teamsAPI } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import LocationMap, { MapMarker } from "@/components/LocationMap";
 
 const Admin = () => {
 
@@ -200,6 +201,36 @@ const Admin = () => {
     }
   };
 
+  const incidentMarkers = useMemo(() => {
+    return reports
+      .filter((report) => report.latitude && report.longitude)
+      .map((report) => {
+        const lat = typeof report.latitude === "string" ? parseFloat(report.latitude) : report.latitude;
+        const lng = typeof report.longitude === "string" ? parseFloat(report.longitude) : report.longitude;
+
+        if (
+          typeof lat !== "number" ||
+          typeof lng !== "number" ||
+          Number.isNaN(lat) ||
+          Number.isNaN(lng)
+        ) {
+          return null;
+        }
+
+        const timestamp = report.updated_at || report.created_at;
+
+        return {
+          id: report.id,
+          position: [lat, lng] as [number, number],
+          title: report.location,
+          description: report.description,
+          status: report.status,
+          timestamp: timestamp ? new Date(timestamp).toLocaleString() : undefined,
+        } satisfies MapMarker;
+      })
+      .filter((marker): marker is MapMarker => Boolean(marker));
+  }, [reports]);
+
   const assignedReports = useMemo(() => {
     return reports.filter((report) => report.assigned_team);
   }, [reports]);
@@ -323,13 +354,11 @@ const Admin = () => {
             {/* Incident Heatmap */}
             <Card className="p-6">
               <h3 className="text-lg font-semibold mb-4">Live Incident Heatmap</h3>
-              <div className="bg-secondary rounded-lg h-96 flex items-center justify-center">
-                <div className="text-center text-muted-foreground">
-                  <MapPin className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p>Geographic heatmap visualization</p>
-                  <p className="text-sm mt-1">Real-time incident density mapping</p>
-                </div>
-              </div>
+              <LocationMap
+                markers={incidentMarkers}
+                height="24rem"
+                emptyMessage="Incident coordinates will appear here once reports include GPS data."
+              />
             </Card>
 
             {/* Active Incidents */}
