@@ -5,12 +5,13 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { reportsAPI, resolveMediaUrl, teamsAPI } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import LocationMap, { MapMarker } from "@/components/LocationMap";
+import type { LatLngExpression } from "leaflet";
 
 const Admin = () => {
 
@@ -35,6 +36,10 @@ const Admin = () => {
   const [reportCount, setReportCount] = useState<number | null>(null);
   const [isLoadingCount, setIsLoadingCount] = useState<boolean>(false);
   const [countError, setCountError] = useState<string | null>(null);
+
+  // Map focus and section reference
+  const mapSectionRef = useRef<HTMLDivElement | null>(null);
+  const [focusPosition, setFocusPosition] = useState<LatLngExpression | null>(null);
 
 
   useEffect(() => {
@@ -202,7 +207,7 @@ const Admin = () => {
   };
 
   const incidentMarkers = useMemo(() => {
-    return reports
+    const markers: (MapMarker | null)[] = reports
       .filter((report) => report.latitude && report.longitude)
       .map((report) => {
         const lat = typeof report.latitude === "string" ? parseFloat(report.latitude) : report.latitude;
@@ -226,9 +231,9 @@ const Admin = () => {
           description: report.description,
           status: report.status,
           timestamp: timestamp ? new Date(timestamp).toLocaleString() : undefined,
-        } satisfies MapMarker;
-      })
-      .filter((marker): marker is MapMarker => Boolean(marker));
+        } as MapMarker;
+      });
+    return markers.filter((m): m is MapMarker => m !== null);
   }, [reports]);
 
   const assignedReports = useMemo(() => {
@@ -352,14 +357,17 @@ const Admin = () => {
             </Card>
 
             {/* Incident Heatmap */}
-            <Card className="p-6">
-              <h3 className="text-lg font-semibold mb-4">Live Incident Heatmap</h3>
-              <LocationMap
-                markers={incidentMarkers}
-                height="24rem"
-                emptyMessage="Incident coordinates will appear here once reports include GPS data."
-              />
-            </Card>
+            <div ref={mapSectionRef}>
+              <Card className="p-6">
+                <h3 className="text-lg font-semibold mb-4">Live Incident Heatmap</h3>
+                <LocationMap
+                  markers={incidentMarkers}
+                  height="24rem"
+                  emptyMessage="Incident coordinates will appear here once reports include GPS data."
+                  focusPosition={focusPosition || undefined}
+                />
+              </Card>
+            </div>
 
             {/* Active Incidents */}
             <Card className="p-6">
@@ -431,6 +439,33 @@ const Admin = () => {
                             )}
                           </div>
                             <div className="flex flex-col gap-2 items-stretch sm:items-end sm:justify-end mt-2 sm:mt-0">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  // Close any open Assign/Change Team dialog first
+                                  if (assignDialogOpen !== null) {
+                                    setAssignDialogOpen(null);
+                                  }
+                                  const lat = typeof r.latitude === "string" ? parseFloat(r.latitude) : r.latitude;
+                                  const lng = typeof r.longitude === "string" ? parseFloat(r.longitude) : r.longitude;
+                                  if (
+                                    typeof lat === "number" &&
+                                    typeof lng === "number" &&
+                                    !Number.isNaN(lat) &&
+                                    !Number.isNaN(lng)
+                                  ) {
+                                    setFocusPosition([lat, lng]);
+                                    setTimeout(() => {
+                                      mapSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                                      // Optional: small offset for fixed headers
+                                      window.scrollBy({ top: -12, left: 0, behavior: "instant" as ScrollBehavior });
+                                    }, 50);
+                                  }
+                                }}
+                              >
+                                <MapPin className="h-4 w-4 mr-1" /> View on Map
+                              </Button>
                               <Dialog open={assignDialogOpen === r.id} onOpenChange={(open) => setAssignDialogOpen(open ? r.id : null)}>
                                 <DialogTrigger asChild>
                                   <Button size="sm" variant="outline">

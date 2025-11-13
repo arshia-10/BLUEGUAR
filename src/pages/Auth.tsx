@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ChatbotButton } from "@/components/ChatbotButton";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { otpAPI } from "@/lib/api";
@@ -571,7 +570,6 @@ const Auth = () => {
         </Card>
       </div>
 
-      <ChatbotButton />
     </div>
   );
 };

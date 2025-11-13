@@ -26,6 +26,7 @@ interface LocationMapProps {
   showUserMarker?: boolean;
   zoom?: number;
   emptyMessage?: string;
+  focusPosition?: LatLngExpression;
 }
 
 // Configure default Leaflet marker assets
@@ -60,6 +61,7 @@ export const LocationMap = ({
   showUserMarker = true,
   zoom = 13,
   emptyMessage = "No data to display on the map yet.",
+  focusPosition,
 }: LocationMapProps) => {
   const isClient = typeof window !== "undefined";
   const [permissionState, setPermissionState] = useState<PermissionState>("idle");
@@ -158,6 +160,8 @@ export const LocationMap = ({
         )}
 
         {!userPosition && <Recenter position={mapCenter} />}
+
+        {focusPosition && <Recenter position={focusPosition} />}
 
         {markers.map((marker) => (
           <Marker key={marker.id} position={marker.position}>

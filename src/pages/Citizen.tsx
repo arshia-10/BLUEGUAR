@@ -301,7 +301,11 @@ const Citizen = () => {
               <div>
                 <h2 className="text-xl font-bold mb-1">Your Area: Moderate Risk</h2>
                 <p className="opacity-90 mb-3">Rainfall expected in the next 2 hours. Stay alert and prepared.</p>
-                <Button variant="outline" size="sm" className="border-accent-foreground text-accent-foreground hover:bg-accent-foreground hover:text-accent">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-accent-foreground bg-accent-foreground/5 text-primary-foreground hover:bg-accent-foreground hover:text-accent"
+                >
                   View Safety Guidelines
                 </Button>
               </div>
@@ -326,7 +330,7 @@ const Citizen = () => {
                   </div>
                 </Button>
                   </DialogTrigger>
-                  <DialogContent className="sm:max-w-[500px]">
+                  <DialogContent className="sm:max-w-[500px] z-[2000]">
                     <DialogHeader>
                       <DialogTitle>Report Flood Incident</DialogTitle>
                       <DialogDescription>
