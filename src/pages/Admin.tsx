@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { reportsAPI, resolveMediaUrl, teamsAPI, alertsAPI } from "@/lib/api";
 import { initEmailJs, sendEmails, type EmailPreview } from "@/lib/email";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,7 @@ import LocationMap, { MapMarker } from "@/components/LocationMap";
 import type { LatLngExpression } from "leaflet";
 
 const Admin = () => {
+  const mapSectionRef = useRef<HTMLDivElement>(null);
 
   // Citizen reports fetched from backend
   const [reports, setReports] = useState<any[]>([]);
@@ -46,6 +47,9 @@ const Admin = () => {
   const [isSendingAlert, setIsSendingAlert] = useState<boolean>(false);
   const [lastEmailPreview, setLastEmailPreview] = useState<EmailPreview | null>(null);
   const [lastEmailStats, setLastEmailStats] = useState<{ total: number; succeeded: number; failed: number } | null>(null);
+
+  // Map focus position state
+  const [focusPosition, setFocusPosition] = useState<LatLngExpression | null>(null);
 
 
   useEffect(() => {
