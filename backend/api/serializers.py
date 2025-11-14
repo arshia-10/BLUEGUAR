@@ -288,6 +288,22 @@ class CitizenReportSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'assigned_team', 'completed_task']
     
+    def validate_latitude(self, value):
+        """Round latitude to 8 decimal places to fit the field constraint"""
+        if value is not None:
+            from decimal import Decimal, ROUND_HALF_UP
+            # Round to 8 decimal places
+            value = Decimal(str(value)).quantize(Decimal('0.00000001'), rounding=ROUND_HALF_UP)
+        return value
+    
+    def validate_longitude(self, value):
+        """Round longitude to 8 decimal places to fit the field constraint"""
+        if value is not None:
+            from decimal import Decimal, ROUND_HALF_UP
+            # Round to 8 decimal places
+            value = Decimal(str(value)).quantize(Decimal('0.00000001'), rounding=ROUND_HALF_UP)
+        return value
+    
     def create(self, validated_data):
         # Set status to pending by default (only when creating)
         validated_data['status'] = 'pending'

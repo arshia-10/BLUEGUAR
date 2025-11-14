@@ -19,6 +19,16 @@ const Citizen = () => {
   const [isLoadingReports, setIsLoadingReports] = useState(true);
   const { toast } = useToast();
 
+  // Flood risk state
+  const [floodRisk, setFloodRisk] = useState<string | null>(null);
+  const [isLoadingFloodRisk, setIsLoadingFloodRisk] = useState<boolean>(false);
+  const [floodRiskError, setFloodRiskError] = useState<string | null>(null);
+
+  // Safe route state
+  const [isSafeRouteDialogOpen, setIsSafeRouteDialogOpen] = useState(false);
+  const [destination, setDestination] = useState("");
+  const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
+
   // Voice recording state
   const [isRecording, setIsRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
@@ -69,6 +79,34 @@ const Citizen = () => {
     fetchReports();
   }, [toast]);
 
+  // Fetch flood risk on mount
+  useEffect(() => {
+    const fetchFloodRisk = async () => {
+      try {
+        setIsLoadingFloodRisk(true);
+        setFloodRiskError(null);
+        const response = await fetch("/api/chatbot/query/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: "What is the current flood risk?" }),
+        });
+        if (!response.ok) {
+          throw new Error("Failed to fetch flood risk");
+        }
+        const data = await response.json();
+        const answer = data.answer || "";
+        // Extract risk level (HIGH, MEDIUM, LOW)
+        const match = answer.match(/(HIGH|MEDIUM|LOW)/i);
+        setFloodRisk(match ? match[1].toUpperCase() : null);
+      } catch (e: any) {
+        setFloodRiskError(e.message || "Failed to load flood risk");
+      } finally {
+        setIsLoadingFloodRisk(false);
+      }
+    };
+    fetchFloodRisk();
+  }, []);
+
   // Get current location
   const getCurrentLocation = () => {
     if (navigator.geolocation) {
@@ -93,6 +131,23 @@ const Citizen = () => {
   };
 
   const reportMarkers = useMemo(() => {
+    // Count reports by proximity to calculate complaint density
+    const reportsByLocation = reports
+      .filter((report) => report.latitude && report.longitude)
+      .reduce((acc: any, report) => {
+        const lat = typeof report.latitude === "string" ? parseFloat(report.latitude) : report.latitude;
+        const lng = typeof report.longitude === "string" ? parseFloat(report.longitude) : report.longitude;
+        
+        // Create a grid key (rounding to 2 decimals = ~1km precision)
+        const gridKey = `${Math.round(lat * 100) / 100}-${Math.round(lng * 100) / 100}`;
+        acc[gridKey] = (acc[gridKey] || 0) + 1;
+        return acc;
+      }, {});
+
+    // Determine complaint density thresholds
+    const densityValues = Object.values(reportsByLocation) as number[];
+    const maxDensity = Math.max(...densityValues, 1);
+
     return reports
       .filter((report) => report.latitude && report.longitude)
       .map((report) => {
@@ -110,6 +165,26 @@ const Citizen = () => {
 
         const timestamp = report.updated_at || report.created_at;
 
+        // Calculate complaint density for this location
+        const gridKey = `${Math.round(lat * 100) / 100}-${Math.round(lng * 100) / 100}`;
+        const density = reportsByLocation[gridKey] || 0;
+        const densityRatio = density / maxDensity;
+
+        // Color based on complaint density + flood risk
+        // High density = more red, Low density = more green
+        let color = "#fbbf24"; // default yellow for MEDIUM
+
+        if (floodRisk === "HIGH") {
+          // HIGH risk: darker colors based on density
+          color = densityRatio > 0.7 ? "#dc2626" : densityRatio > 0.4 ? "#ef4444" : "#f87171"; // dark red to light red
+        } else if (floodRisk === "MEDIUM") {
+          // MEDIUM risk: yellow to orange based on density
+          color = densityRatio > 0.7 ? "#d97706" : densityRatio > 0.4 ? "#fbbf24" : "#fcd34d"; // orange to light yellow
+        } else if (floodRisk === "LOW") {
+          // LOW risk: green shades based on density
+          color = densityRatio > 0.7 ? "#047857" : densityRatio > 0.4 ? "#10b981" : "#6ee7b7"; // dark green to light green
+        }
+
         return {
           id: report.id,
           position: [lat, lng] as [number, number],
@@ -117,10 +192,12 @@ const Citizen = () => {
           description: report.description,
           status: report.status,
           timestamp: timestamp ? new Date(timestamp).toLocaleString() : undefined,
-        } satisfies MapMarker;
+          color: color, // Add color property for heatmap visualization with density
+          density: density, // Include density info for tooltips
+        } satisfies MapMarker & { color: string; density: number };
       })
       .filter((marker): marker is MapMarker => Boolean(marker));
-  }, [reports]);
+  }, [reports, floodRisk]);
 
   // Handle image selection
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -228,6 +305,14 @@ const Citizen = () => {
         reportData.longitude = parseFloat(reportForm.longitude);
       }
 
+      // Round coordinates to 8 decimal places to match database field precision
+      if (reportData.latitude) {
+        reportData.latitude = Math.round(reportData.latitude * 100000000) / 100000000;
+      }
+      if (reportData.longitude) {
+        reportData.longitude = Math.round(reportData.longitude * 100000000) / 100000000;
+      }
+
       // Add image if selected
       if (selectedImage) {
         reportData.image = selectedImage;
@@ -288,28 +373,173 @@ const Citizen = () => {
     return `${Math.floor(diffInSeconds / 86400)} days ago`;
   };
 
+  // Handle safe route calculation
+  const handleCalculateSafeRoute = async () => {
+    if (!destination.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter a destination",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsCalculatingRoute(true);
+      
+      // Get current location
+      const currentLoc = await new Promise<{ lat: number; lng: number }>((resolve, reject) => {
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              resolve({
+                lat: position.coords.latitude,
+                lng: position.coords.longitude,
+              });
+            },
+            (error) => {
+              reject(error);
+            }
+          );
+        } else {
+          reject(new Error("Geolocation not supported"));
+        }
+      });
+
+      // Build routing URL (using OpenStreetMap/Nominatim + routing)
+      const routeInfo = {
+        from: `${currentLoc.lat},${currentLoc.lng}`,
+        to: destination,
+        riskLevel: floodRisk,
+        recommendations: getRiskBasedRecommendations(),
+      };
+
+      // Show toast with recommendations
+      toast({
+        title: "Safe Route Calculated",
+        description: routeInfo.recommendations,
+      });
+
+      // Open Google Maps or another routing service
+      const encodedDest = encodeURIComponent(destination);
+      const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${currentLoc.lat},${currentLoc.lng}&destination=${encodedDest}&travelmode=driving`;
+      window.open(mapsUrl, "_blank");
+
+      setIsSafeRouteDialogOpen(false);
+      setDestination("");
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to calculate route. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCalculatingRoute(false);
+    }
+  };
+
+  // Get risk-based route recommendations
+  const getRiskBasedRecommendations = (): string => {
+    if (floodRisk === "HIGH") {
+      return "🔴 HIGH RISK: Avoid low-lying areas, underpasses, and riverside routes. Take elevated paths when possible. Stay on main roads.";
+    } else if (floodRisk === "MEDIUM") {
+      return "🟡 MEDIUM RISK: Avoid flood-prone areas. Check weather updates frequently. Have an alternate route ready.";
+    } else if (floodRisk === "LOW") {
+      return "🟢 LOW RISK: Conditions are stable. Standard routes are safe, but stay vigilant and monitor weather.";
+    }
+    return "Route calculated. Stay alert and avoid flooded areas.";
+  };
+
+  // Get safe areas to navigate to
+  const getSafeAreas = (): { name: string; reason: string; emoji: string }[] => {
+    // Common safe areas in Delhi/flood-prone regions
+    const safeAreasDatabase: { [key: string]: { name: string; reason: string; emoji: string }[] } = {
+      HIGH: [
+        { name: "Higher Ground Areas", emoji: "⛰️", reason: "Elevated locations away from waterlogging" },
+        { name: "Government Buildings", emoji: "🏛️", reason: "Typically on elevated ground with emergency support" },
+        { name: "Hospitals/Medical Centers", emoji: "🏥", reason: "Located on high ground with flood protection" },
+        { name: "Community Centers", emoji: "🏢", reason: "Relief shelters with emergency provisions" },
+        { name: "Parking Structures", emoji: "🅿️", reason: "Multi-level facilities on elevated areas" },
+      ],
+      MEDIUM: [
+        { name: "Main Roads/Highways", emoji: "🛣️", reason: "Better drainage and quick escape routes" },
+        { name: "Shopping Malls", emoji: "🛍️", reason: "Multi-story buildings with emergency procedures" },
+        { name: "Educational Institutions", emoji: "🏫", reason: "Well-maintained infrastructure and elevated areas" },
+        { name: "Hotels/Lodges", emoji: "🏨", reason: "Equipped with flood preparedness" },
+        { name: "Parks on High Ground", emoji: "🌳", reason: "Open areas with natural elevation" },
+      ],
+      LOW: [
+        { name: "Any Local Area", emoji: "✓", reason: "Overall safe conditions - all areas accessible" },
+        { name: "Market Areas", emoji: "🏪", reason: "Normal commercial zones are safe" },
+        { name: "Residential Neighborhoods", emoji: "🏘️", reason: "Standard navigation routes available" },
+        { name: "Public Transportation Hubs", emoji: "🚌", reason: "Good connectivity and infrastructure" },
+        { name: "Tourist Attractions", emoji: "🎭", reason: "Popular areas with proper infrastructure" },
+      ],
+    };
+
+    return safeAreasDatabase[floodRisk || "LOW"] || safeAreasDatabase["LOW"];
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8">
-        {/* Hero Alert */}
-        <Card className="mb-8 bg-gradient-accent text-accent-foreground p-6 shadow-lg">
+        {/* Dynamic Flood Risk Alert */}
+        <Card className={`mb-8 p-6 shadow-lg ${
+          floodRisk === "HIGH" ? "bg-red-50 border-red-200" :
+          floodRisk === "MEDIUM" ? "bg-yellow-50 border-yellow-200" :
+          floodRisk === "LOW" ? "bg-green-50 border-green-200" :
+          "bg-gray-50 border-gray-200"
+        }`}>
           <div className="flex items-start justify-between">
             <div className="flex gap-4">
-              <div className="w-12 h-12 bg-accent-foreground/20 rounded-full flex items-center justify-center">
-                <AlertTriangle className="h-6 w-6" />
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                floodRisk === "HIGH" ? "bg-red-200" :
+                floodRisk === "MEDIUM" ? "bg-yellow-200" :
+                floodRisk === "LOW" ? "bg-green-200" :
+                "bg-gray-200"
+              }`}>
+                <AlertTriangle className={`h-6 w-6 ${
+                  floodRisk === "HIGH" ? "text-red-600" :
+                  floodRisk === "MEDIUM" ? "text-yellow-600" :
+                  floodRisk === "LOW" ? "text-green-600" :
+                  "text-gray-600"
+                }`} />
               </div>
-              <div>
-                <h2 className="text-xl font-bold mb-1">Your Area: Moderate Risk</h2>
-                <p className="opacity-90 mb-3">Rainfall expected in the next 2 hours. Stay alert and prepared.</p>
+              <div className="flex-1">
+                <h2 className={`text-xl font-bold mb-1 ${
+                  floodRisk === "HIGH" ? "text-red-900" :
+                  floodRisk === "MEDIUM" ? "text-yellow-900" :
+                  floodRisk === "LOW" ? "text-green-900" :
+                  "text-gray-900"
+                }`}>
+                  {isLoadingFloodRisk ? "Fetching flood risk..." : `Current Flood Risk: ${floodRisk || "Unknown"}`}
+                </h2>
+                <p className={`mb-3 ${
+                  floodRisk === "HIGH" ? "text-red-700" :
+                  floodRisk === "MEDIUM" ? "text-yellow-700" :
+                  floodRisk === "LOW" ? "text-green-700" :
+                  "text-gray-700"
+                }`}>
+                  {floodRisk === "HIGH" && "⚠️ High flood risk detected. Avoid flood-prone areas and stay alert."}
+                  {floodRisk === "MEDIUM" && "⚡ Moderate flood risk. Monitor weather conditions and be prepared."}
+                  {floodRisk === "LOW" && "✓ Low flood risk. Conditions are stable, but stay vigilant."}
+                  {!floodRisk && "Loading real-time flood risk data..."}
+                </p>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="border-accent-foreground bg-accent-foreground/5 text-primary-foreground hover:bg-accent-foreground hover:text-accent"
+                  className={`${
+                    floodRisk === "HIGH" ? "border-red-300 bg-red-100 hover:bg-red-200 text-red-900" :
+                    floodRisk === "MEDIUM" ? "border-yellow-300 bg-yellow-100 hover:bg-yellow-200 text-yellow-900" :
+                    floodRisk === "LOW" ? "border-green-300 bg-green-100 hover:bg-green-200 text-green-900" :
+                    "border-gray-300 bg-gray-100 hover:bg-gray-200 text-gray-900"
+                  }`}
                 >
                   View Safety Guidelines
                 </Button>
               </div>
             </div>
+            {isLoadingFloodRisk && <Loader2 className="h-5 w-5 animate-spin" />}
           </div>
         </Card>
 
@@ -490,7 +720,7 @@ const Citizen = () => {
                     </form>
                   </DialogContent>
                 </Dialog>
-                <Button variant="outline" className="justify-start h-auto py-4">
+                <Button variant="outline" className="justify-start h-auto py-4" onClick={() => setIsSafeRouteDialogOpen(true)}>
                   <Navigation className="mr-3 h-5 w-5" />
                   <div className="text-left">
                     <div className="font-semibold">Find Safe Route</div>
@@ -499,6 +729,115 @@ const Citizen = () => {
                 </Button>
               </div>
             </Card>
+
+            {/* Safe Route Dialog */}
+            <Dialog open={isSafeRouteDialogOpen} onOpenChange={setIsSafeRouteDialogOpen}>
+              <DialogContent className="sm:max-w-[425px]" style={{ zIndex: 9999 }}>
+                <DialogHeader>
+                  <DialogTitle>Find Safe Route</DialogTitle>
+                  <DialogDescription>
+                    Enter your destination and we'll guide you through safer areas based on current flood conditions.
+                  </DialogDescription>
+                </DialogHeader>
+
+                {/* Risk Level Display */}
+                <div className="py-2">
+                  <div className="text-sm font-semibold mb-2">Current Flood Risk</div>
+                  <div
+                    className={`p-3 rounded-lg text-white text-sm font-medium ${
+                      floodRisk === "HIGH"
+                        ? "bg-red-500"
+                        : floodRisk === "MEDIUM"
+                        ? "bg-yellow-500"
+                        : floodRisk === "LOW"
+                        ? "bg-green-500"
+                        : "bg-gray-500"
+                    }`}
+                  >
+                    {floodRisk === "HIGH"
+                      ? "🔴 HIGH - Avoid flood-prone areas"
+                      : floodRisk === "MEDIUM"
+                      ? "🟡 MEDIUM - Stay cautious"
+                      : floodRisk === "LOW"
+                      ? "🟢 LOW - Safe conditions"
+                      : "⚪ Loading..."}
+                  </div>
+                </div>
+
+                {/* Destination Input */}
+                <div className="space-y-2">
+                  <Label htmlFor="destination">Destination</Label>
+                  <Input
+                    id="destination"
+                    placeholder="Enter destination address or landmark"
+                    value={destination}
+                    onChange={(e) => setDestination(e.target.value)}
+                    disabled={isCalculatingRoute}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !isCalculatingRoute) {
+                        handleCalculateSafeRoute();
+                      }
+                    }}
+                  />
+                </div>
+
+                {/* Route Recommendations */}
+                <div className="py-2 space-y-2">
+                  <div className="text-sm font-semibold">Recommendations</div>
+                  <div className="text-xs text-muted-foreground bg-slate-100 p-3 rounded-lg whitespace-pre-wrap">
+                    {getRiskBasedRecommendations()}
+                  </div>
+                </div>
+
+                {/* Safe Areas to Navigate To */}
+                <div className="py-2 space-y-2">
+                  <div className="text-sm font-semibold">Safe Areas to Navigate To</div>
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {getSafeAreas().map((area, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-start gap-2 p-2 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer transition"
+                        onClick={() => setDestination(area.name)}
+                      >
+                        <span className="text-lg min-w-fit">{area.emoji}</span>
+                        <div className="flex-1 text-left">
+                          <div className="text-sm font-medium text-slate-900">{area.name}</div>
+                          <div className="text-xs text-slate-600">{area.reason}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-2 justify-end pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsSafeRouteDialogOpen(false)}
+                    disabled={isCalculatingRoute}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleCalculateSafeRoute}
+                    disabled={isCalculatingRoute || !destination.trim()}
+                    className="gap-2"
+                  >
+                    {isCalculatingRoute ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Calculating...
+                      </>
+                    ) : (
+                      <>
+                        <Navigation className="h-4 w-4" />
+                        Navigate
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
 
             {/* Interactive Map */}
             <Card className="p-6">

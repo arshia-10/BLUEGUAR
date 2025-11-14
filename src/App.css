@@ -5,6 +5,15 @@
   text-align: center;
 }
 
+/* Dialog z-index override for Leaflet maps */
+[data-state="open"] {
+  z-index: 9999 !important;
+}
+
+[role="dialog"] {
+  z-index: 9999 !important;
+}
+
 .logo {
   height: 6em;
   padding: 1.5em;

@@ -51,6 +51,11 @@ const Admin = () => {
   // Map focus position state
   const [focusPosition, setFocusPosition] = useState<LatLngExpression | null>(null);
 
+  // Flood risk state
+  const [floodRisk, setFloodRisk] = useState<string | null>(null);
+  const [isLoadingFloodRisk, setIsLoadingFloodRisk] = useState<boolean>(false);
+  const [floodRiskError, setFloodRiskError] = useState<string | null>(null);
+
 
   useEffect(() => {
     const fetchReports = async () => {
@@ -60,6 +65,8 @@ const Admin = () => {
         // Use public all-reports endpoint for admin dashboard
         const res = await reportsAPI.getAllReports();
         const fetchedReports = res.reports || [];
+        console.log("Admin: Fetched reports:", fetchedReports);
+        console.log("Reports with coordinates:", fetchedReports.filter((r: any) => r.latitude && r.longitude).length);
         setReports(fetchedReports);
       } catch (e: any) {
         setReportsError(e.message || "Failed to load reports");
@@ -82,6 +89,34 @@ const Admin = () => {
     };
     fetchReports();
     fetchCount();
+  }, []);
+
+  // Fetch flood risk on mount
+  useEffect(() => {
+    const fetchFloodRisk = async () => {
+      try {
+        setIsLoadingFloodRisk(true);
+        setFloodRiskError(null);
+        const response = await fetch("/api/chatbot/query/", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: "What is the current flood risk?" }),
+        });
+        if (!response.ok) {
+          throw new Error("Failed to fetch flood risk");
+        }
+        const data = await response.json();
+        const answer = data.answer || "";
+        // Extract risk level (HIGH, MEDIUM, LOW)
+        const match = answer.match(/(HIGH|MEDIUM|LOW)/i);
+        setFloodRisk(match ? match[1].toUpperCase() : null);
+      } catch (e: any) {
+        setFloodRiskError(e.message || "Failed to load flood risk");
+      } finally {
+        setIsLoadingFloodRisk(false);
+      }
+    };
+    fetchFloodRisk();
   }, []);
 
   // Fetch teams on mount
@@ -253,6 +288,23 @@ const Admin = () => {
   };
 
   const incidentMarkers = useMemo(() => {
+    // Count reports by proximity to calculate complaint density
+    const reportsByLocation = reports
+      .filter((report) => report.latitude && report.longitude)
+      .reduce((acc: any, report) => {
+        const lat = typeof report.latitude === "string" ? parseFloat(report.latitude) : report.latitude;
+        const lng = typeof report.longitude === "string" ? parseFloat(report.longitude) : report.longitude;
+        
+        // Create a grid key (rounding to 2 decimals = ~1km precision)
+        const gridKey = `${Math.round(lat * 100) / 100}-${Math.round(lng * 100) / 100}`;
+        acc[gridKey] = (acc[gridKey] || 0) + 1;
+        return acc;
+      }, {});
+
+    // Determine complaint density thresholds
+    const densityValues = Object.values(reportsByLocation) as number[];
+    const maxDensity = Math.max(...densityValues, 1);
+
     const markers: (MapMarker | null)[] = reports
       .filter((report) => report.latitude && report.longitude)
       .map((report) => {
@@ -270,6 +322,25 @@ const Admin = () => {
 
         const timestamp = report.updated_at || report.created_at;
 
+        // Calculate complaint density for this location
+        const gridKey = `${Math.round(lat * 100) / 100}-${Math.round(lng * 100) / 100}`;
+        const density = reportsByLocation[gridKey] || 0;
+        const densityRatio = density / maxDensity;
+
+        // Color based on complaint density + flood risk
+        let color = "#fbbf24"; // default yellow for MEDIUM
+
+        if (floodRisk === "HIGH") {
+          // HIGH risk: darker colors based on density
+          color = densityRatio > 0.7 ? "#dc2626" : densityRatio > 0.4 ? "#ef4444" : "#f87171"; // dark red to light red
+        } else if (floodRisk === "MEDIUM") {
+          // MEDIUM risk: yellow to orange based on density
+          color = densityRatio > 0.7 ? "#d97706" : densityRatio > 0.4 ? "#fbbf24" : "#fcd34d"; // orange to light yellow
+        } else if (floodRisk === "LOW") {
+          // LOW risk: green shades based on density
+          color = densityRatio > 0.7 ? "#047857" : densityRatio > 0.4 ? "#10b981" : "#6ee7b7"; // dark green to light green
+        }
+
         return {
           id: report.id,
           position: [lat, lng] as [number, number],
@@ -277,10 +348,12 @@ const Admin = () => {
           description: report.description,
           status: report.status,
           timestamp: timestamp ? new Date(timestamp).toLocaleString() : undefined,
-        } as MapMarker;
+          color: color, // Add color property for heatmap visualization with density
+          density: density, // Include density info for tooltips
+        } as MapMarker & { color: string; density: number };
       });
     return markers.filter((m): m is MapMarker => m !== null);
-  }, [reports]);
+  }, [reports, floodRisk]);
 
   const assignedReports = useMemo(() => {
     return reports.filter((report) => report.assigned_team);
@@ -384,10 +457,45 @@ const Admin = () => {
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
+            {/* Flood Risk Card */}
+            <Card className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5" />
+                  Current Flood Risk
+                </h3>
+                {isLoadingFloodRisk && <Loader2 className="h-4 w-4 animate-spin" />}
+              </div>
+              {floodRiskError ? (
+                <div className="text-sm text-destructive">{floodRiskError}</div>
+              ) : (
+                <div className="flex items-center gap-4">
+                  <div className={`px-4 py-2 rounded-lg font-semibold text-white ${
+                    floodRisk === "HIGH" ? "bg-red-500" :
+                    floodRisk === "MEDIUM" ? "bg-yellow-500" :
+                    floodRisk === "LOW" ? "bg-green-500" :
+                    "bg-gray-500"
+                  }`}>
+                    {floodRisk ? floodRisk : "Loading..."}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    {floodRisk === "HIGH" && "⚠️ High flood risk detected in the region"}
+                    {floodRisk === "MEDIUM" && "⚡ Moderate flood risk detected"}
+                    {floodRisk === "LOW" && "✓ Low flood risk, conditions stable"}
+                  </div>
+                </div>
+              )}
+            </Card>
+
             {/* Incident Heatmap */}
             <div ref={mapSectionRef}>
               <Card className="p-6">
-                <h3 className="text-lg font-semibold mb-4">Live Incident Heatmap</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold">Live Incident Heatmap</h3>
+                  <div className="text-sm text-muted-foreground">
+                    {incidentMarkers.length} {incidentMarkers.length === 1 ? "marker" : "markers"}
+                  </div>
+                </div>
                 <LocationMap
                   markers={incidentMarkers}
                   height="24rem"

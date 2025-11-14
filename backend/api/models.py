@@ -109,8 +109,8 @@ class FloodAlert(models.Model):
         ('critical', 'Critical'),
     ])
     description = models.TextField()
-    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
-    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    latitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
@@ -128,8 +128,8 @@ class CitizenReport(models.Model):
     reporter_email = models.EmailField()
     location = models.CharField(max_length=255)
     description = models.TextField()
-    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
-    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    latitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True)
     image = models.ImageField(upload_to='reports/images/', null=True, blank=True)
     audio = models.FileField(upload_to='reports/audio/', null=True, blank=True)
     status = models.CharField(max_length=50, choices=[

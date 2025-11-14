@@ -17,6 +17,7 @@ export interface MapMarker {
   description?: string;
   status?: string;
   timestamp?: string;
+  color?: string; // Color for heatmap visualization (e.g., "#ef4444" for red, "#fbbf24" for yellow, "#10b981" for green)
 }
 
 interface LocationMapProps {
@@ -148,14 +149,14 @@ export const LocationMap = ({
         {userPosition && showUserMarker && (
           <>
             <CircleMarker
-              center={userPosition}
+              center={userPosition as LatLngExpression}
               pathOptions={{ color: "#2563eb", fillColor: "#93c5fd", fillOpacity: 0.6 }}
               radius={10}
             />
-            <Marker position={userPosition}>
+            <Marker position={userPosition as LatLngExpression}>
               <Popup>You're here</Popup>
             </Marker>
-            <Recenter position={userPosition} />
+            <Recenter position={userPosition as LatLngExpression} />
           </>
         )}
 
@@ -163,24 +164,38 @@ export const LocationMap = ({
 
         {focusPosition && <Recenter position={focusPosition} />}
 
-        {markers.map((marker) => (
-          <Marker key={marker.id} position={marker.position}>
-            <Popup>
-              <div className="space-y-1 text-sm">
-                {marker.title && <p className="font-semibold">{marker.title}</p>}
-                {marker.status && (
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                    Status: {marker.status}
-                  </p>
-                )}
-                {marker.description && <p className="text-xs">{marker.description}</p>}
-                {marker.timestamp && (
-                  <p className="text-xs text-muted-foreground">Updated: {marker.timestamp}</p>
-                )}
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+        {markers.map((marker) => {
+          // Use CircleMarker for color-coded heatmap visualization
+          const markerColor = marker.color || "#3b82f6"; // default blue if no color specified
+          return (
+            <CircleMarker
+              key={marker.id}
+              center={marker.position}
+              pathOptions={{
+                color: markerColor,
+                fillColor: markerColor,
+                fillOpacity: 0.7,
+                weight: 2,
+              }}
+              radius={8}
+            >
+              <Popup>
+                <div className="space-y-1 text-sm">
+                  {marker.title && <p className="font-semibold">{marker.title}</p>}
+                  {marker.status && (
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Status: {marker.status}
+                    </p>
+                  )}
+                  {marker.description && <p className="text-xs">{marker.description}</p>}
+                  {marker.timestamp && (
+                    <p className="text-xs text-muted-foreground">Updated: {marker.timestamp}</p>
+                  )}
+                </div>
+              </Popup>
+            </CircleMarker>
+          );
+        })}
       </MapContainer>
 
       {markers.length === 0 && permissionState !== "loading" && (
