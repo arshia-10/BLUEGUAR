@@ -1,4 +1,4 @@
-import { Users, AlertTriangle, TrendingUp, MapPin, CheckCircle, Clock, Filter, Trash2 } from "lucide-react";
+import { Users, AlertTriangle, TrendingUp, MapPin, CheckCircle, Clock, Filter, Trash2, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -50,6 +50,9 @@ const Admin = () => {
 
   // Map focus position state
   const [focusPosition, setFocusPosition] = useState<LatLngExpression | null>(null);
+
+  // Heatmap toggle state
+  const [showHeatmap, setShowHeatmap] = useState<boolean>(true);
 
   // Flood risk state
   const [floodRisk, setFloodRisk] = useState<string | null>(null);
@@ -491,16 +494,40 @@ const Admin = () => {
             <div ref={mapSectionRef}>
               <Card className="p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold">Live Incident Heatmap</h3>
-                  <div className="text-sm text-muted-foreground">
-                    {incidentMarkers.length} {incidentMarkers.length === 1 ? "marker" : "markers"}
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <Layers className="h-5 w-5" />
+                    Complaint Heatmap
+                  </h3>
+                  <div className="flex items-center gap-3">
+                    <div className="text-sm text-muted-foreground">
+                      {incidentMarkers.length} {incidentMarkers.length === 1 ? "complaint" : "complaints"}
+                    </div>
+                    <Button
+                      variant={showHeatmap ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setShowHeatmap(!showHeatmap)}
+                      className="flex items-center gap-2"
+                    >
+                      <Layers className="h-4 w-4" />
+                      {showHeatmap ? "Heatmap View" : "Marker View"}
+                    </Button>
                   </div>
                 </div>
+                {showHeatmap && (
+                  <div className="mb-3 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
+                    <p className="text-xs text-blue-700 dark:text-blue-300">
+                      <strong>Heatmap Mode:</strong> Visualizing complaint density across the region. 
+                      Red areas indicate higher complaint concentration, while blue areas have fewer complaints.
+                    </p>
+                  </div>
+                )}
                 <LocationMap
                   markers={incidentMarkers}
                   height="24rem"
                   emptyMessage="Incident coordinates will appear here once reports include GPS data."
                   focusPosition={focusPosition || undefined}
+                  showHeatmap={showHeatmap}
+                  heatmapIntensity={1.0}
                 />
               </Card>
             </div>

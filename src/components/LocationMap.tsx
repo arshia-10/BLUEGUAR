@@ -7,6 +7,7 @@ import markerIconUrl from "leaflet/dist/images/marker-icon.png";
 import markerShadowUrl from "leaflet/dist/images/marker-shadow.png";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { HeatmapLayer } from "./HeatmapLayer";
 
 type PermissionState = "idle" | "loading" | "granted" | "denied" | "error";
 
@@ -28,6 +29,8 @@ interface LocationMapProps {
   zoom?: number;
   emptyMessage?: string;
   focusPosition?: LatLngExpression;
+  showHeatmap?: boolean;
+  heatmapIntensity?: number; // Intensity multiplier for heatmap points
 }
 
 // Configure default Leaflet marker assets
@@ -63,6 +66,8 @@ export const LocationMap = ({
   zoom = 13,
   emptyMessage = "No data to display on the map yet.",
   focusPosition,
+  showHeatmap = false,
+  heatmapIntensity = 1.0,
 }: LocationMapProps) => {
   const isClient = typeof window !== "undefined";
   const [permissionState, setPermissionState] = useState<PermissionState>("idle");
@@ -120,6 +125,39 @@ export const LocationMap = ({
     return DEFAULT_CENTER;
   }, [markers, userPosition]);
 
+  // Prepare heatmap data points from markers
+  const heatmapPoints = useMemo(() => {
+    if (!showHeatmap || markers.length === 0) {
+      return [];
+    }
+
+    // Group markers by location to calculate density
+    const locationMap = new Map<string, { count: number; lat: number; lng: number }>();
+    
+    markers.forEach((marker) => {
+      const [lat, lng] = marker.position;
+      // Round to 3 decimal places (~100m precision) for clustering
+      const key = `${Math.round(lat * 1000) / 1000},${Math.round(lng * 1000) / 1000}`;
+      
+      if (locationMap.has(key)) {
+        locationMap.get(key)!.count += 1;
+      } else {
+        locationMap.set(key, { count: 1, lat, lng });
+      }
+    });
+
+    // Convert to heatmap format: [lat, lng, intensity]
+    // Intensity is normalized based on max count in the dataset
+    const counts = Array.from(locationMap.values()).map(v => v.count);
+    const maxCount = counts.length > 0 ? Math.max(...counts) : 1;
+    
+    return Array.from(locationMap.values()).map(({ lat, lng, count }) => {
+      // Normalize intensity (0.1 to 1.0) based on count relative to max
+      const intensity = Math.max(0.1, (count / maxCount) * heatmapIntensity);
+      return [lat, lng, intensity] as [number, number, number];
+    });
+  }, [markers, showHeatmap, heatmapIntensity]);
+
   if (!isClient) {
     return (
       <div
@@ -146,6 +184,19 @@ export const LocationMap = ({
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
+        {/* Heatmap Layer - shown when showHeatmap is true */}
+        {showHeatmap && heatmapPoints.length > 0 && (
+          <HeatmapLayer
+            points={heatmapPoints}
+            options={{
+              radius: 30,
+              blur: 20,
+              maxZoom: 18,
+              minOpacity: 0.1,
+            }}
+          />
+        )}
+
         {userPosition && showUserMarker && (
           <>
             <CircleMarker
@@ -164,7 +215,8 @@ export const LocationMap = ({
 
         {focusPosition && <Recenter position={focusPosition} />}
 
-        {markers.map((marker) => {
+        {/* Show markers only when heatmap is not enabled, or show both if needed */}
+        {(!showHeatmap || !heatmapPoints.length) && markers.map((marker) => {
           // Use CircleMarker for color-coded heatmap visualization
           const markerColor = marker.color || "#3b82f6"; // default blue if no color specified
           return (
