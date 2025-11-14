@@ -20,5 +20,6 @@ urlpatterns = [
     path('reports/<int:report_id>/delete/', views.delete_report, name='delete-report'),
     path('teams/', views.list_teams, name='list-teams'),
     path('teams/create/', views.create_team, name='create-team'),
+    path('alerts/mass-email/', views.send_mass_alert_email, name='send-mass-alert-email'),
 ]
 

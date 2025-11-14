@@ -5,6 +5,9 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.authtoken.models import Token
 from django.conf import settings
 from django.core.files.storage import default_storage
+from django.core.mail import send_mail
+from django.contrib.auth import get_user_model
+
 from .models import Admin, AdminToken, CitizenReport, OTP, ResponseTeam, CompletedTask
 from .serializers import (
     AdminSignupSerializer,
@@ -828,3 +831,69 @@ def delete_report(request, report_id):
             'error': str(e) if settings.DEBUG else None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def send_mass_alert_email(request):
+    """
+    Send a mass alert email from an authenticated admin to all registered users.
+    Expects JSON body with 'location' and 'message'.
+    """
+    try:
+        sender = request.user
+        # Only allow Admin model users or staff users
+        if not (isinstance(sender, Admin) or getattr(sender, 'is_staff', False)):
+            return Response({'detail': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+        location = (request.data.get('location') or '').strip()
+        message_text = (request.data.get('message') or '').strip()
+
+        if not location:
+            return Response({'detail': 'location is required'}, status=status.HTTP_400_BAD_REQUEST)
+        if not message_text:
+            return Response({'detail': 'message is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        subject = f"Flood Alert: {location}"
+        body = (
+            f"Warning! There are high chances of flood in {location}. "
+            f"Details: {message_text}"
+        )
+
+        # Collect all user emails (exclude empty)
+        UserModel = get_user_model()
+        recipient_list = list(
+            UserModel.objects.exclude(email='').values_list('email', flat=True)
+        )
+
+        if not recipient_list:
+            return Response({
+                'message': 'No recipient emails found.',
+                'recipients': 0,
+                'email': {
+                    'subject': subject,
+                    'body': body,
+                    'recipients': []
+                }
+            }, status=status.HTTP_200_OK)
+
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'no-reply@blueguard.local')
+        # Send email
+        send_mail(subject, body, from_email, recipient_list, fail_silently=False)
+
+        return Response({
+            'message': 'Mass alert sent successfully',
+            'recipients': len(recipient_list),
+            'email': {
+                'subject': subject,
+                'body': body,
+                'recipients': recipient_list
+            }
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Send mass alert error: {str(e)}")
+        return Response({
+            'detail': 'An error occurred while sending mass alert.',
+            'error': str(e) if settings.DEBUG else None
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
