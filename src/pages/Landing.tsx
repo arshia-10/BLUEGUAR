@@ -53,9 +53,6 @@ import {
   Bar,
 } from "recharts";
 
-// Placeholder for hero image - user will add their own image here
-// Import your hero image: import heroImage from "@/assets/hero-image.jpg";
-
 const Landing = () => {
   const statsRef = useRef(null);
   const featuresRef = useRef(null);
@@ -412,7 +409,7 @@ const Landing = () => {
               </motion.div>
             </motion.div>
 
-            {/* Image Side - Placeholder for user's image */}
+            {/* Image Side */}
             <motion.div
               initial={{ opacity: 0, x: 50 }}
               animate={{ opacity: 1, x: 0 }}
@@ -424,29 +421,13 @@ const Landing = () => {
                 transition={{ type: "spring", stiffness: 300 }}
                 className="relative rounded-2xl overflow-hidden shadow-2xl"
               >
-                {/* TODO: Replace this div with your actual hero image */}
-                {/* <img src={heroImage} alt="Flood Monitoring" className="w-full h-auto" /> */}
-                <div className="w-full h-[500px] bg-gradient-to-br from-blue-400 via-cyan-400 to-teal-400 flex items-center justify-center relative overflow-hidden">
-                  <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-                    className="absolute inset-0 opacity-20"
-                  >
-                    <Droplets className="h-full w-full text-white" />
-                  </motion.div>
-                  <div className="text-center text-white p-8 relative z-10">
-                    <motion.div
-                      animate={{ y: [0, -10, 0] }}
-                      transition={{ duration: 3, repeat: Infinity }}
-                    >
-                      <Shield className="h-24 w-24 mx-auto mb-4 opacity-90" />
-                    </motion.div>
-                    <p className="text-xl font-semibold">Add Your Hero Image Here</p>
-                    <p className="text-sm mt-2 opacity-80">Replace this placeholder with your image</p>
-                  </div>
-                  {/* Glassmorphism overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent pointer-events-none" />
-                </div>
+                <img 
+                  src={heroImage} 
+                  alt="Flood Monitoring - AI-Powered Early Warning System" 
+                  className="w-full h-[500px] object-cover"
+                />
+                {/* Glassmorphism overlay for better text readability if needed */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent pointer-events-none" />
               </motion.div>
               {/* Floating elements */}
               <motion.div
