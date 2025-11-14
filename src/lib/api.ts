@@ -629,4 +629,26 @@ export const resolveMediaUrl = (url?: string | null) => {
   return `${origin}${url.startsWith('/') ? '' : '/'}${url}`;
 };
 
+// Alerts API
+export const alertsAPI = {
+  sendMassEmail: async (location: string, message: string) => {
+    const response = await apiRequest('/alerts/mass-email/', {
+      method: 'POST',
+      body: JSON.stringify({ location, message }),
+    });
+    if (!response.ok) {
+      const status = response.status;
+      const err = await response.json().catch(() => ({} as any));
+      if (status === 401) {
+        throw new Error(err.detail || 'Authentication failed. Please login again.');
+      }
+      if (status === 403) {
+        throw new Error(err.detail || 'Permission denied. Admin access required.');
+      }
+      throw new Error(err.detail || err.message || `Failed to send mass alert (${status})`);
+    }
+    return response.json();
+  },
+};
+
 

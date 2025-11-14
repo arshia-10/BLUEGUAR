@@ -23,6 +23,15 @@ class Admin(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     last_login = models.DateTimeField(null=True, blank=True)
     
+    @property
+    def is_authenticated(self):
+        # Required by Django/DRF permission checks
+        return True
+    
+    @property
+    def is_anonymous(self):
+        return False
+    
     def set_password(self, raw_password):
         """Hash and set the password"""
         self.password = make_password(raw_password)

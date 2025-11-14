@@ -5,9 +5,12 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { reportsAPI, resolveMediaUrl, teamsAPI } from "@/lib/api";
+import { useEffect, useMemo, useState } from "react";
+import { reportsAPI, resolveMediaUrl, teamsAPI, alertsAPI } from "@/lib/api";
+import { initEmailJs, sendEmails, type EmailPreview } from "@/lib/email";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import LocationMap, { MapMarker } from "@/components/LocationMap";
@@ -37,9 +40,12 @@ const Admin = () => {
   const [isLoadingCount, setIsLoadingCount] = useState<boolean>(false);
   const [countError, setCountError] = useState<string | null>(null);
 
-  // Map focus and section reference
-  const mapSectionRef = useRef<HTMLDivElement | null>(null);
-  const [focusPosition, setFocusPosition] = useState<LatLngExpression | null>(null);
+  // Mass alert form state
+  const [alertLocation, setAlertLocation] = useState<string>("");
+  const [alertMessage, setAlertMessage] = useState<string>("");
+  const [isSendingAlert, setIsSendingAlert] = useState<boolean>(false);
+  const [lastEmailPreview, setLastEmailPreview] = useState<EmailPreview | null>(null);
+  const [lastEmailStats, setLastEmailStats] = useState<{ total: number; succeeded: number; failed: number } | null>(null);
 
 
   useEffect(() => {
@@ -123,6 +129,42 @@ const Admin = () => {
       });
     } finally {
       setIsAddingTeam(false);
+    }
+  };
+
+  const handleSendMassAlert = async () => {
+    if (!alertLocation.trim()) {
+      toast({ title: "Validation Error", description: "Please enter a location", variant: "destructive" });
+      return;
+    }
+    if (!alertMessage.trim()) {
+      toast({ title: "Validation Error", description: "Please enter a message", variant: "destructive" });
+      return;
+    }
+    try {
+      setIsSendingAlert(true);
+      const res = await alertsAPI.sendMassEmail(alertLocation.trim(), alertMessage.trim());
+      const preview: EmailPreview | undefined = res.email;
+      if (preview && preview.recipients) {
+        initEmailJs();
+        const stats = await sendEmails(preview);
+        setLastEmailPreview(preview);
+        setLastEmailStats(stats);
+        toast({
+          title: "Alert Sent",
+          description: `${res.message || "Mass alert sent"} • Recipients: ${stats.total}, Delivered: ${stats.succeeded}, Failed: ${stats.failed}`,
+        });
+      } else {
+        setLastEmailPreview(undefined as any);
+        setLastEmailStats(null);
+        toast({ title: "Alert Sent", description: res.message || `Sent to ${res.recipients} recipients` });
+      }
+      setAlertLocation("");
+      setAlertMessage("");
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to send alert", variant: "destructive" });
+    } finally {
+      setIsSendingAlert(false);
     }
   };
 
@@ -695,14 +737,63 @@ const Admin = () => {
             {/* Quick Actions */}
             <Card className="p-6 bg-gradient-accent text-accent-foreground">
               <h3 className="text-lg font-semibold mb-3">Quick Actions</h3>
-              <div className="space-y-2">
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <Label htmlFor="alert-location" className="text-accent-foreground">Location</Label>
+                  <Input
+                    id="alert-location"
+                    placeholder="e.g., Riverside District"
+                    value={alertLocation}
+                    onChange={(e) => setAlertLocation(e.target.value)}
+                    className="bg-white text-black placeholder:text-muted-foreground"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="alert-message" className="text-accent-foreground">Message</Label>
+                  <Textarea
+                    id="alert-message"
+                    placeholder="Enter alert message/details"
+                    value={alertMessage}
+                    onChange={(e) => setAlertMessage(e.target.value)}
+                    rows={4}
+                    spellCheck={false}
+                    className="bg-white text-black placeholder:text-muted-foreground"
+                  />
+                </div>
                 <Button
                   variant="outline"
                   className="w-full justify-start border-accent-foreground text-accent-foreground hover:bg-accent-foreground hover:text-accent"
                   size="sm"
+                  onClick={handleSendMassAlert}
+                  disabled={isSendingAlert}
                 >
-                  Send Mass Alert
+                  {isSendingAlert ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send Mass Alert"}
                 </Button>
+                {lastEmailPreview && (
+                  <div className="mt-3 rounded-md bg-white text-black p-3 shadow-sm">
+                    <div className="text-sm font-semibold mb-1">Email Preview</div>
+                    <div className="text-sm"><span className="font-medium">Subject:</span> {lastEmailPreview.subject}</div>
+                    <div className="text-sm mt-1 whitespace-pre-line"><span className="font-medium">Body:</span> {lastEmailPreview.body}</div>
+                    <div className="text-sm mt-1">
+                      <span className="font-medium">Recipients:</span> {lastEmailPreview.recipients?.length || 0}
+                      {lastEmailPreview.recipients?.length ? (
+                        <div className="mt-1 max-h-24 overflow-auto text-xs bg-muted/30 rounded p-2">
+                          {lastEmailPreview.recipients.slice(0, 20).map((r) => (
+                            <div key={r}>{r}</div>
+                          ))}
+                          {lastEmailPreview.recipients.length > 20 && (
+                            <div>+{lastEmailPreview.recipients.length - 20} more…</div>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                    {lastEmailStats && (
+                      <div className="text-xs text-muted-foreground mt-2">
+                        Delivered: {lastEmailStats.succeeded} / {lastEmailStats.total} • Failed: {lastEmailStats.failed}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <Button
                   variant="outline"
                   className="w-full justify-start border-accent-foreground text-accent-foreground hover:bg-accent-foreground hover:text-accent"
