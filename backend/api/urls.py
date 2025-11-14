@@ -21,5 +21,6 @@ urlpatterns = [
     path('teams/', views.list_teams, name='list-teams'),
     path('teams/create/', views.create_team, name='create-team'),
     path('debug/request/', views.debug_request, name='debug-request'),
+    path('chatbot/query/', views.chatbot_query, name='chatbot-query'),
 ]
 

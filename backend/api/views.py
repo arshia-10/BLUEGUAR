@@ -888,3 +888,63 @@ def delete_report(request, report_id):
             'error': str(e) if settings.DEBUG else None
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def chatbot_query(request):
+    """Simple endpoint to proxy chat queries to BlueGuard chatbot.
+
+    Expects JSON body: {"text": "your question"}
+    """
+    try:
+        text = request.data.get('text') or request.data.get('query') or ''
+        if not text:
+            return Response({'detail': "'text' is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Import chatbot package dynamically. Try top-level 'chatbot' first
+        # (backend/ is on PYTHONPATH when running manage.py). Fallback
+        # to 'backend.chatbot' if necessary.
+        try:
+            from chatbot import blueguard_response
+        except Exception:
+            try:
+                from backend.chatbot import blueguard_response
+            except Exception as e:
+                raise ImportError("Could not import blueguard_response from chatbot package") from e
+
+        answer = blueguard_response(text)
+
+        # If weather engine returned an opaque error, attempt a direct fetch
+        # to provide a fallback response (better UX) and capture diagnostics.
+        if isinstance(answer, str) and answer.startswith("Unable to fetch weather data"):
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning("Chatbot returned weather fetch error; attempting direct weather engine call for diagnostics.")
+            try:
+                # Try importing the weather engine to call the fetcher directly
+                try:
+                    from chatbot.weather_engine import get_final_risk_and_score_for_location
+                except Exception:
+                    from backend.chatbot.weather_engine import get_final_risk_and_score_for_location
+
+                res = get_final_risk_and_score_for_location()
+                logger.info(f"Direct weather engine result: {res}")
+                if isinstance(res, dict) and 'final_risk' in res:
+                    # Return the risk directly to the client instead of the generic error
+                    return Response({'answer': f"Flood Risk: {res['final_risk']}"}, status=status.HTTP_200_OK)
+                else:
+                    # Include debug info when available
+                    debug_msg = res.get('error') if isinstance(res, dict) else str(res)
+                    if hasattr(settings, 'DEBUG') and settings.DEBUG:
+                        return Response({'answer': f"Unable to fetch weather data: {debug_msg}"}, status=status.HTTP_200_OK)
+            except Exception as e:
+                logger.exception("Direct weather engine diagnostic failed.")
+
+        return Response({'answer': answer}, status=status.HTTP_200_OK)
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Chatbot query error: {str(e)}")
+        return Response({'detail': 'An error occurred while processing the query.', 'error': str(e) if settings.DEBUG else None}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+

@@ -338,24 +338,6 @@ const Admin = () => {
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Predictive Analytics */}
-            <Card className="p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-semibold flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5 text-accent" />
-                  Flood Risk Prediction (Next 24h)
-                </h3>
-                <Button variant="outline" size="sm">Export</Button>
-              </div>
-              <div className="bg-gradient-to-r from-success/20 via-warning/20 to-destructive/20 rounded-lg h-64 flex items-center justify-center">
-                <div className="text-center text-muted-foreground">
-                  <TrendingUp className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p>Predictive analytics chart</p>
-                  <p className="text-sm mt-1">AI-powered risk forecasting</p>
-                </div>
-              </div>
-            </Card>
-
             {/* Incident Heatmap */}
             <div ref={mapSectionRef}>
               <Card className="p-6">
